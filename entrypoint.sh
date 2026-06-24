@@ -35,8 +35,8 @@ echo "========================================="
 
 # ── Step 1: validate source files ───────────────────────────────────────────
 for f in "$DESIGN_FILE" "$TESTBENCH_FILE"; do
-    if [[ ! -f "/workspace/${f}" ]]; then
-        echo "[ERROR] Required source file not found: /workspace/${f}" >&2
+    if [[ ! -f "${WORKSPACE_DIR:-/workspace}/${f}" ]]; then
+        echo "[ERROR] Required source file not found: ${WORKSPACE_DIR:-/workspace}/${f}" >&2
         exit 1
     fi
 done
@@ -45,10 +45,10 @@ echo "[OK] Source files found: ${DESIGN_FILE}, ${TESTBENCH_FILE}"
 # ── Step 2: compile ──────────────────────────────────────────────────────────
 echo ""
 echo "--- Compiling ---"
-if ! iverilog -o "/workspace/${OUTPUT_BIN}" \
+if ! iverilog -o "${WORKSPACE_DIR:-/workspace}/${OUTPUT_BIN}" \
               -Wall \
-              "/workspace/${DESIGN_FILE}" \
-              "/workspace/${TESTBENCH_FILE}" 2>&1; then
+              "${WORKSPACE_DIR:-/workspace}/${DESIGN_FILE}" \
+              "${WORKSPACE_DIR:-/workspace}/${TESTBENCH_FILE}" 2>&1; then
     echo "" >&2
     echo "[ERROR] Compilation failed (iverilog exited with error)." >&2
     exit 2
@@ -63,7 +63,7 @@ echo "--- Simulating (limit: ${TIMEOUT_SECONDS}s) ---"
 # in another 5 s it sends SIGKILL.  Exit code 124 means "timed out".
 timeout_exit=0
 timeout --kill-after=5 "${TIMEOUT_SECONDS}" \
-    vvp "/workspace/${OUTPUT_BIN}" 2>&1 || timeout_exit=$?
+    vvp "${WORKSPACE_DIR:-/workspace}/${OUTPUT_BIN}" 2>&1 || timeout_exit=$?
 
 if [[ $timeout_exit -eq 124 ]]; then
     echo "" >&2
@@ -80,8 +80,8 @@ fi
 echo "[OK] Simulation finished successfully."
 
 # ── Step 4: report waveform ──────────────────────────────────────────────────
-if [[ -f "/workspace/${VCD_FILE}" ]]; then
-    vcd_size=$(stat -c%s "/workspace/${VCD_FILE}")
+if [[ -f "${WORKSPACE_DIR:-/workspace}/${VCD_FILE}" ]]; then
+    vcd_size=$(stat -c%s "${WORKSPACE_DIR:-/workspace}/${VCD_FILE}")
     echo "[OK] Waveform written → ${VCD_FILE} (${vcd_size} bytes)"
 else
     echo "[WARN] No VCD file produced. Check that your testbench calls \$dumpfile/\$dumpvars."

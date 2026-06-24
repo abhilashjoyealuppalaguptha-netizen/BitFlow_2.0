@@ -122,152 +122,58 @@ def _run_container_sync(
     timeout: int,
 ) -> SandboxResult:
     """
-    Synchronous implementation that:
-      1. Creates a Docker client
-      2. Starts the sandbox container with all security flags
-      3. Waits for it to finish (with an outer wall-clock ceiling)
-      4. Reads logs + exit code
-      5. Force-removes the container
-
-    This function is intentionally synchronous so it can be called from
-    asyncio.get_event_loop().run_in_executor() without needing an async
-    Docker library.
-
-    Args:
-        tmpdir       : Host-side workspace directory (bind-mounted as /workspace).
-        workspace_id : Short ID for log correlation.
-        timeout      : Simulation timeout passed to the container via env var.
-
-    Returns:
-        SandboxResult with all output captured.
-
-    Raises:
-        SandboxImageNotFound  — image not present locally.
-        DockerDaemonError     — daemon unreachable or API error.
-        ContainerStartError   — container failed to start.
+    Synchronous implementation that runs the simulation using native subprocess.
+    Replaces the Docker backend for compatibility with Railway and other PaaS.
     """
+    import subprocess
+    import os
+
     t_start = time.monotonic()
-    container: Optional[Container] = None
+    logger.info("ws=%s | Starting native simulation timeout=%ds", workspace_id, timeout)
+
+    env = os.environ.copy()
+    env["TIMEOUT_SECONDS"] = str(timeout)
+    env["VCD_FILE"] = "wave.vcd"
+    env["DESIGN_FILE"] = "design.v"
+    env["TESTBENCH_FILE"] = "tb.v"
+    env["WORKSPACE_DIR"] = tmpdir
+
+    stdout_text = ""
+    stderr_text = ""
+    exit_code = SandboxExitCode.INTERNAL_ERROR
 
     try:
-        client = docker.from_env()
-    except docker.errors.DockerException as exc:
-        raise DockerDaemonError(
-            f"Cannot connect to Docker daemon: {exc}. "
-            "Is Docker running? Does this process have socket access?"
-        ) from exc
+        # Run entrypoint.sh directly.
+        # Ensure it exists in /usr/local/bin or current directory
+        entrypoint_path = "/usr/local/bin/entrypoint.sh"
+        if not os.path.exists(entrypoint_path):
+            entrypoint_path = "./entrypoint.sh"
 
-    logger.info("ws=%s | Starting container image=%s timeout=%ds",
-                workspace_id, settings.docker_image, timeout)
-
-    mount_source = tmpdir
-    if settings.host_tmp_dir:
-        if tmpdir.startswith("/tmp"):
-            rel_path = tmpdir[len("/tmp"):].lstrip("/\\")
-            host_dir = settings.host_tmp_dir.replace('\\', '/')
-            mount_source = f"{host_dir}/{rel_path}"
-        logger.info("ws=%s | Translated container tmpdir %s to host path %s",
-                    workspace_id, tmpdir, mount_source)
-
-    try:
-        container = client.containers.run(
-            image   = settings.docker_image,
-            detach  = True,          # returns immediately; we wait() below
-
-            # ── Filesystem isolation ──────────────────────────────────────
-            # The host tmpdir is mounted read-write as /workspace so the
-            # entrypoint can write a.out and wave.vcd.  The rest of the
-            # container's root FS is read-only.
-            volumes={
-                mount_source: {"bind": "/workspace", "mode": "rw"},
-            },
-            read_only=True,
-
-            # /tmp needs to be writable for libc and vvp internal temp files.
-            # noexec prevents anything placed there from being executed.
-            tmpfs={"/tmp": "size=8m,noexec,nosuid,nodev"},
-
-            # ── Resource caps ──────────────────────────────────────────────
-            mem_limit     = settings.mem_limit,
-            memswap_limit = settings.mem_limit,   # mem_limit = memswap_limit → no swap
-            cpu_quota     = settings.cpu_quota,
-            cpu_period    = settings.cpu_period,
-            pids_limit    = settings.pids_limit,  # fork-bomb protection
-
-            # ── Network ────────────────────────────────────────────────────
-            # Completely disable networking — compiled Verilog has no reason
-            # to make outbound connections.
-            network_disabled=settings.network_disabled,
-
-            # ── Privilege hardening ────────────────────────────────────────
-            user         = settings.sandbox_user,   # "10001:10001"
-            cap_drop     = ["ALL"],                  # drop all 41 Linux capabilities
-            security_opt = ["no-new-privileges"],    # block setuid / setgid escalation
-            privileged   = False,
-
-            # ── Runtime environment ────────────────────────────────────────
-            # These env vars are read by entrypoint.sh
-            environment={
-                "TIMEOUT_SECONDS": str(timeout),
-                "VCD_FILE":        "wave.vcd",
-                "DESIGN_FILE":     "design.v",
-                "TESTBENCH_FILE":  "tb.v",
-            },
-
-            # Do NOT auto-remove: we must read logs before removing.
-            auto_remove=False,
-
-            # Labels for observability — visible in `docker ps` and metrics
-            labels={
-                "app":          "verilog-sandbox",
-                "workspace_id": workspace_id,
-            },
+        process = subprocess.Popen(
+            [entrypoint_path],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
         )
 
-    except docker.errors.ImageNotFound:
-        raise SandboxImageNotFound(settings.docker_image)
-    except docker.errors.APIError as exc:
-        raise ContainerStartError(f"Docker API error during container start: {exc}") from exc
-
-    logger.info("ws=%s | Container %s started", workspace_id, container.short_id)
-
-    try:
-        # Wait for the container to exit.
-        # Outer wall-clock ceiling = simulation timeout + 15 s startup budget.
-        # If the container somehow hangs beyond this (Docker bug, kernel issue),
-        # the wait() call itself raises a requests.exceptions.ReadTimeout.
-        result = container.wait(timeout=timeout + 15)
-        exit_code: int = result.get("StatusCode", SandboxExitCode.INTERNAL_ERROR)
-
-        # Collect logs.  stdout=True, stderr=True returns interleaved output
-        # in chronological order (Docker's default multiplexed stream).
-        # We separate them by requesting each stream independently.
-        raw_stdout = container.logs(stdout=True, stderr=False)
-        raw_stderr = container.logs(stdout=False, stderr=True)
-
-        stdout_text = raw_stdout.decode("utf-8", errors="replace")
-        stderr_text = raw_stderr.decode("utf-8", errors="replace")
-
+        try:
+            # We add a small buffer over the simulation timeout
+            stdout_text, stderr_text = process.communicate(timeout=timeout + 15)
+            exit_code = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout_text, stderr_text = process.communicate()
+            exit_code = SandboxExitCode.INTERNAL_ERROR
+            logger.error("ws=%s | Native simulation timed out", workspace_id)
+            stderr_text += "\n[ERROR] Simulation process timed out"
     except Exception as exc:
-        # Timeout waiting for the container, or a Docker API error mid-run.
-        # Map these to INTERNAL_ERROR so the caller gets a clean response.
-        logger.error("ws=%s | Error waiting for container: %s", workspace_id, exc)
-        exit_code    = SandboxExitCode.INTERNAL_ERROR
-        stdout_text  = ""
-        stderr_text  = str(exc)
-
-    finally:
-        # Always remove the container — even if wait() raised an exception.
-        if container is not None:
-            try:
-                container.remove(force=True)
-                logger.info("ws=%s | Container %s removed", workspace_id, container.short_id)
-            except Exception as rm_exc:
-                # Log but don't re-raise — the original error is more important.
-                logger.warning("ws=%s | Failed to remove container: %s", workspace_id, rm_exc)
+        logger.error("ws=%s | Error running simulation: %s", workspace_id, exc)
+        exit_code = SandboxExitCode.INTERNAL_ERROR
+        stderr_text = str(exc)
 
     duration_ms = (time.monotonic() - t_start) * 1000
-    status      = exit_code_to_status(exit_code)
+    status = exit_code_to_status(exit_code)
 
     logger.info(
         "ws=%s | Finished status=%s exit_code=%d duration=%.0fms",
