@@ -35,4 +35,4 @@ RUN cp /app/api/.env /app/.env || true
 EXPOSE 8080
 
 # Run the API server — shell form so ${PORT} expands correctly
-CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}
+CMD ["sh", "-c", "python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
