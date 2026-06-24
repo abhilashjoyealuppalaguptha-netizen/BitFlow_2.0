@@ -150,7 +150,7 @@ def _run_container_sync(
             entrypoint_path = "./entrypoint.sh"
 
         process = subprocess.Popen(
-            [entrypoint_path],
+            ["bash", entrypoint_path],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
