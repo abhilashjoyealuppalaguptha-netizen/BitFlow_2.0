@@ -22,12 +22,12 @@ import {
 import { notFound }           from "next/navigation";
 import dynamic                from "next/dynamic";
 import ProblemToolbar         from "../../../components/ProblemToolbar";
-import ProblemStatement       from "@/components/ProblemStatement";
-import Terminal               from "@/components/Terminal";
-import WaveformPanel          from "@/components/WaveformPanel";
-import { useProblem }         from "@/hooks/useProblem";
-import { useProgress }        from "@/hooks/useProgress";
-import { useSplitter }        from "@/hooks/useSplitter";
+import ProblemStatement       from "../../components/ProblemStatement";
+import Terminal               from "../../components/Terminal";
+import WaveformPanel          from "../../components/WaveformPanel";
+import { useProblem }         from "../../hooks/useProblem";
+import { useProgress }        from "../../hooks/useProgress";
+import { useSplitter }        from "../../hooks/useSplitter";
 import { parseVcd }           from "@/lib/vcd-parser";
 import { recordHintUnlock }   from "@/lib/progress-storage";
 import type { ParsedVcd }     from "@/lib/vcd-parser";
