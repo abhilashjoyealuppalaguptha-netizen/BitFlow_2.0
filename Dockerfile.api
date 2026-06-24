@@ -4,6 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PORT=8080
 
 WORKDIR /app
 
@@ -30,5 +31,8 @@ RUN cp /app/api/.env /app/.env || true
 
 
 
-# Run the API server using uvicorn. Using string format executes via /bin/sh -c natively.
-CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Expose the port Railway will route traffic to
+EXPOSE 8080
+
+# Run the API server — shell form so ${PORT} expands correctly
+CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}
