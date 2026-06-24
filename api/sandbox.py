@@ -88,12 +88,10 @@ def docker_is_available() -> bool:
     """
     Return True if the Docker daemon is reachable.
     Used by GET /health — never raises.
+    On Railway/production environments, we run simulations natively,
+    so we return False immediately to avoid socket connection hangs.
     """
-    try:
-        docker.from_env().ping()
-        return True
-    except Exception:
-        return False
+    return False
 
 
 def inspect_image(image_name: str) -> Optional[ImageInfo]:
