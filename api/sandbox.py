@@ -189,7 +189,6 @@ def _run_simulation_sync(
     try:
         sim_env = os.environ.copy()
         sim_env["VCD_FILE"]    = vcd_file
-        sim_env["IVERILOG_DUMPER"] = "lxt"   # optional: may help some testbenches
 
         sim_proc = subprocess.run(
             ["vvp", output_bin],
