@@ -1,19 +1,12 @@
 """
-sandbox.py — Docker sandbox orchestration engine
+sandbox.py — Native subprocess simulation engine
 =================================================
 
-This module is the heart of the backend.  It owns every interaction with
-the Docker daemon: creating containers, waiting for them, reading their
-logs, and cleaning them up.
+Runs Verilog simulations natively using iverilog/vvp installed in the
+container, instead of launching a Docker-in-Docker child container.
 
-Design decisions:
-  • Synchronous Docker SDK calls are run in a thread-pool executor so they
-    don't block FastAPI's async event loop.
-  • The container is always removed in a finally block — no orphans.
-  • Every security flag (cap_drop, read_only, no-new-privileges, …) is
-    applied here, not in the route handler, so it's impossible to forget one.
-  • stdout and stderr are collected separately where the Docker API allows,
-    and the entrypoint's exit code is mapped to our SandboxExitCode enum.
+This approach is compatible with PaaS platforms like Railway where the
+Docker daemon is not available inside the running container.
 
 Public surface:
     run_simulation(tmpdir, workspace_id, timeout) -> SandboxResult
@@ -25,20 +18,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-import docker
-import docker.errors
-from docker.models.containers import Container
-
-from api.config import settings
-from api.exceptions import (
-    ContainerStartError,
-    DockerDaemonError,
-    SandboxImageNotFound,
-)
 from api.models import SandboxExitCode, exit_code_to_status
 
 logger = logging.getLogger(__name__)
@@ -65,19 +50,10 @@ class SandboxResult:
 
 @dataclass
 class ImageInfo:
-    """Subset of Docker image metadata returned by inspect_image()."""
-    image_id:    str          # short SHA, e.g. "sha256:3f9a…"
-    size_bytes:  int          # uncompressed size
-    size_mb:     float        # size_bytes / 1024 / 1024
-
-    @classmethod
-    def from_docker_image(cls, img) -> "ImageInfo":
-        raw_id = img.id or ""
-        return cls(
-            image_id   = raw_id[:19] if raw_id.startswith("sha256:") else raw_id[:12],
-            size_bytes = img.attrs.get("Size", 0),
-            size_mb    = round(img.attrs.get("Size", 0) / 1024 / 1024, 1),
-        )
+    """Stub kept for API compatibility with health/status routes."""
+    image_id:    str
+    size_bytes:  int
+    size_mb:     float
 
 
 # =============================================================================
@@ -86,103 +62,192 @@ class ImageInfo:
 
 def docker_is_available() -> bool:
     """
-    Return True if the Docker daemon is reachable.
-    Used by GET /health — never raises.
-    On Railway/production environments, we run simulations natively,
-    so we return False immediately to avoid socket connection hangs.
+    Always returns False — simulations run natively (no Docker daemon needed).
+    Kept for API compatibility with health/status routes.
     """
     return False
 
 
 def inspect_image(image_name: str) -> Optional[ImageInfo]:
     """
-    Return ImageInfo for `image_name`, or None if it doesn't exist locally.
-    Used by GET /status.
+    Always returns None — no Docker image management in native mode.
+    Kept for API compatibility with the /status route.
     """
-    try:
-        client = docker.from_env()
-        img = client.images.get(image_name)
-        return ImageInfo.from_docker_image(img)
-    except docker.errors.ImageNotFound:
-        return None
-    except Exception as exc:
-        logger.warning("inspect_image(%s) failed: %s", image_name, exc)
-        return None
+    return None
 
 
 # =============================================================================
-# Core: synchronous container runner (called from thread pool)
+# Core: synchronous simulation runner (called from thread pool)
 # =============================================================================
 
-def _run_container_sync(
+def _run_simulation_sync(
     tmpdir: str,
     workspace_id: str,
     timeout: int,
 ) -> SandboxResult:
     """
-    Synchronous implementation that runs the simulation using native subprocess.
-    Replaces the Docker backend for compatibility with Railway and other PaaS.
-    """
-    import subprocess
-    import os
+    Runs iverilog compilation and vvp simulation directly as subprocesses.
 
+    Flow:
+      1. Compile design.v + tb.v with iverilog
+      2. Simulate the compiled binary with vvp under a timeout
+      3. Return stdout/stderr and a structured exit code
+
+    Args:
+        tmpdir       : Directory containing design.v and tb.v
+        workspace_id : Short ID used for log correlation
+        timeout      : Simulation wall-clock limit in seconds
+    """
     t_start = time.monotonic()
     logger.info("ws=%s | Starting native simulation timeout=%ds", workspace_id, timeout)
 
-    env = os.environ.copy()
-    env["TIMEOUT_SECONDS"] = str(timeout)
-    env["VCD_FILE"] = "wave.vcd"
-    env["DESIGN_FILE"] = "design.v"
-    env["TESTBENCH_FILE"] = "tb.v"
-    env["WORKSPACE_DIR"] = tmpdir
+    design_file    = os.path.join(tmpdir, "design.v")
+    testbench_file = os.path.join(tmpdir, "tb.v")
+    output_bin     = os.path.join(tmpdir, "a.out")
+    vcd_file       = os.path.join(tmpdir, "wave.vcd")
 
-    stdout_text = ""
-    stderr_text = ""
+    combined_stdout = []
+    combined_stderr = []
     exit_code = SandboxExitCode.INTERNAL_ERROR
 
-    try:
-        # Run entrypoint.sh directly.
-        # Ensure it exists in /usr/local/bin or current directory
-        entrypoint_path = "/usr/local/bin/entrypoint.sh"
-        if not os.path.exists(entrypoint_path):
-            entrypoint_path = "./entrypoint.sh"
+    # ── Step 1: validate source files ─────────────────────────────────────────
+    for fpath in (design_file, testbench_file):
+        if not os.path.exists(fpath):
+            msg = f"[ERROR] Required source file not found: {fpath}"
+            logger.error("ws=%s | %s", workspace_id, msg)
+            combined_stderr.append(msg)
+            duration_ms = (time.monotonic() - t_start) * 1000
+            return SandboxResult(
+                exit_code    = SandboxExitCode.INTERNAL_ERROR,
+                status       = exit_code_to_status(SandboxExitCode.INTERNAL_ERROR),
+                stdout       = "",
+                stderr       = "\n".join(combined_stderr),
+                duration_ms  = round(duration_ms, 1),
+                workspace_id = workspace_id,
+            )
 
-        process = subprocess.Popen(
-            ["bash", entrypoint_path],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+    # ── Step 2: compile with iverilog ─────────────────────────────────────────
+    combined_stdout.append("--- Compiling ---")
+    try:
+        compile_proc = subprocess.run(
+            ["iverilog", "-o", output_bin, "-Wall", design_file, testbench_file],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        # iverilog prints warnings/errors to stderr, info to stdout
+        if compile_proc.stdout:
+            combined_stdout.append(compile_proc.stdout)
+        if compile_proc.stderr:
+            combined_stdout.append(compile_proc.stderr)   # show warnings inline
+
+        if compile_proc.returncode != 0:
+            combined_stdout.append("[ERROR] Compilation failed (iverilog exited with error).")
+            logger.warning("ws=%s | Compilation failed", workspace_id)
+            exit_code = SandboxExitCode.COMPILE_ERROR
+            duration_ms = (time.monotonic() - t_start) * 1000
+            return SandboxResult(
+                exit_code    = exit_code,
+                status       = exit_code_to_status(exit_code),
+                stdout       = "\n".join(combined_stdout),
+                stderr       = "\n".join(combined_stderr),
+                duration_ms  = round(duration_ms, 1),
+                workspace_id = workspace_id,
+            )
+
+        combined_stdout.append("[OK] Compilation successful → a.out")
+
+    except subprocess.TimeoutExpired:
+        combined_stderr.append("[ERROR] Compilation exceeded time limit.")
+        exit_code = SandboxExitCode.INTERNAL_ERROR
+        duration_ms = (time.monotonic() - t_start) * 1000
+        return SandboxResult(
+            exit_code    = exit_code,
+            status       = exit_code_to_status(exit_code),
+            stdout       = "\n".join(combined_stdout),
+            stderr       = "\n".join(combined_stderr),
+            duration_ms  = round(duration_ms, 1),
+            workspace_id = workspace_id,
+        )
+    except FileNotFoundError:
+        msg = "[ERROR] iverilog not found. Ensure iverilog is installed in the container."
+        combined_stderr.append(msg)
+        logger.error("ws=%s | %s", workspace_id, msg)
+        exit_code = SandboxExitCode.INTERNAL_ERROR
+        duration_ms = (time.monotonic() - t_start) * 1000
+        return SandboxResult(
+            exit_code    = exit_code,
+            status       = exit_code_to_status(exit_code),
+            stdout       = "\n".join(combined_stdout),
+            stderr       = "\n".join(combined_stderr),
+            duration_ms  = round(duration_ms, 1),
+            workspace_id = workspace_id,
         )
 
-        try:
-            # We add a small buffer over the simulation timeout
-            stdout_text, stderr_text = process.communicate(timeout=timeout + 15)
-            exit_code = process.returncode
-        except subprocess.TimeoutExpired:
-            process.kill()
-            stdout_text, stderr_text = process.communicate()
-            exit_code = SandboxExitCode.INTERNAL_ERROR
-            logger.error("ws=%s | Native simulation timed out", workspace_id)
-            stderr_text += "\n[ERROR] Simulation process timed out"
-    except Exception as exc:
-        logger.error("ws=%s | Error running simulation: %s", workspace_id, exc)
+    # ── Step 3: simulate with vvp ─────────────────────────────────────────────
+    combined_stdout.append(f"\n--- Simulating (limit: {timeout}s) ---")
+    try:
+        sim_env = os.environ.copy()
+        sim_env["VCD_FILE"]    = vcd_file
+        sim_env["IVERILOG_DUMPER"] = "lxt"   # optional: may help some testbenches
+
+        sim_proc = subprocess.run(
+            ["vvp", output_bin],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=sim_env,
+            cwd=tmpdir,
+        )
+        if sim_proc.stdout:
+            combined_stdout.append(sim_proc.stdout)
+        if sim_proc.stderr:
+            combined_stdout.append(sim_proc.stderr)
+
+        if sim_proc.returncode != 0:
+            combined_stdout.append(
+                f"[ERROR] Simulation runtime error (vvp exit code: {sim_proc.returncode})."
+            )
+            exit_code = SandboxExitCode.RUNTIME_ERROR
+        else:
+            combined_stdout.append("[OK] Simulation finished successfully.")
+            exit_code = 0  # success
+
+        # Report VCD
+        if os.path.exists(vcd_file):
+            vcd_size = os.path.getsize(vcd_file)
+            combined_stdout.append(f"[OK] Waveform written → wave.vcd ({vcd_size} bytes)")
+        else:
+            combined_stdout.append(
+                "[WARN] No VCD file produced. Check that your testbench calls $dumpfile/$dumpvars."
+            )
+
+    except subprocess.TimeoutExpired:
+        combined_stderr.append(
+            f"[ERROR] Simulation exceeded {timeout}s time limit and was killed."
+        )
+        logger.warning("ws=%s | Simulation timed out", workspace_id)
+        exit_code = SandboxExitCode.TIMEOUT
+
+    except FileNotFoundError:
+        msg = "[ERROR] vvp not found. Ensure iverilog is installed in the container."
+        combined_stderr.append(msg)
+        logger.error("ws=%s | %s", workspace_id, msg)
         exit_code = SandboxExitCode.INTERNAL_ERROR
-        stderr_text = str(exc)
 
     duration_ms = (time.monotonic() - t_start) * 1000
     status = exit_code_to_status(exit_code)
 
     logger.info(
-        "ws=%s | Finished status=%s exit_code=%d duration=%.0fms",
+        "ws=%s | Finished status=%s exit_code=%s duration=%.0fms",
         workspace_id, status, exit_code, duration_ms,
     )
 
     return SandboxResult(
         exit_code    = exit_code,
         status       = status,
-        stdout       = stdout_text,
-        stderr       = stderr_text,
+        stdout       = "\n".join(combined_stdout),
+        stderr       = "\n".join(combined_stderr),
         duration_ms  = round(duration_ms, 1),
         workspace_id = workspace_id,
     )
@@ -200,26 +265,21 @@ async def run_simulation(
     """
     Async entry-point for the route handlers.
 
-    Runs _run_container_sync in a thread-pool executor so the Docker SDK's
-    blocking calls (containers.run, container.wait, container.logs) don't
-    stall FastAPI's event loop during concurrent requests.
+    Runs _run_simulation_sync in a thread-pool executor so the blocking
+    subprocess calls don't stall FastAPI's event loop.
 
     Args:
-        tmpdir       : Host-side workspace directory.
-        workspace_id : Short ID for log correlation.
-        timeout      : Simulation timeout in seconds.
+        tmpdir       : Directory containing design.v and tb.v
+        workspace_id : Short ID for log correlation
+        timeout      : Simulation timeout in seconds
 
     Returns:
         SandboxResult
-
-    Raises:
-        SandboxImageNotFound | DockerDaemonError | ContainerStartError
-        (all subclasses of VerilogSandboxError, handled globally in main.py)
     """
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
-        None,                     # use the default ThreadPoolExecutor
-        _run_container_sync,
+        None,
+        _run_simulation_sync,
         tmpdir,
         workspace_id,
         timeout,

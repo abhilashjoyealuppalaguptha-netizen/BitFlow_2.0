@@ -56,27 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Memory limit  : %s", settings.mem_limit)
     logger.info("Network disabled: %s", settings.network_disabled)
 
-    # Optional: verify Docker is reachable at startup (warn, don't crash)
-    from api.sandbox import docker_is_available, inspect_image
-    if not docker_is_available():
-        logger.warning(
-            "Docker daemon is NOT reachable at startup. "
-            "Simulation requests will fail until Docker is available."
-        )
-    else:
-        image_info = inspect_image(settings.docker_image)
-        if image_info is None:
-            logger.warning(
-                "Sandbox image '%s' not found locally. "
-                "Run: docker build -t %s .",
-                settings.docker_image,
-                settings.docker_image,
-            )
-        else:
-            logger.info(
-                "Sandbox image found: %s (%.1f MB)",
-                image_info.image_id, image_info.size_mb,
-            )
+    # Simulations run natively via iverilog/vvp subprocess — no Docker daemon needed.
+    logger.info("Native simulation mode: using iverilog/vvp subprocess directly")
 
     yield  # ← application runs here
 

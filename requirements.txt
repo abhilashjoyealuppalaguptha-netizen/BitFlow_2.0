@@ -14,7 +14,7 @@ pydantic>=2.7.0,<3.0.0            # data validation (used for models + config)
 pydantic-settings>=2.2.0,<3.0.0  # settings management with env / .env support
 
 # ── Docker integration ────────────────────────────────────────────────────────
-docker>=7.0.0,<8.0.0             # official Docker SDK for Python
+# docker SDK removed — simulations now run natively via subprocess (Railway-compatible)
 
 # ── Multipart upload support ──────────────────────────────────────────────────
 python-multipart>=0.0.9           # required for UploadFile endpoints
