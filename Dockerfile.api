@@ -28,8 +28,7 @@ COPY api/ /app/api/
 # Copy the environment file to working directory root if it exists
 RUN cp /app/api/.env /app/.env || true
 
-# Expose API port
-EXPOSE 8000
+
 
 # Run the API server using uvicorn. Using string format executes via /bin/sh -c natively.
 CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
