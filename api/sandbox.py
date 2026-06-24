@@ -160,6 +160,15 @@ def _run_container_sync(
     logger.info("ws=%s | Starting container image=%s timeout=%ds",
                 workspace_id, settings.docker_image, timeout)
 
+    mount_source = tmpdir
+    if settings.host_tmp_dir:
+        if tmpdir.startswith("/tmp"):
+            rel_path = tmpdir[len("/tmp"):].lstrip("/\\")
+            host_dir = settings.host_tmp_dir.replace('\\', '/')
+            mount_source = f"{host_dir}/{rel_path}"
+        logger.info("ws=%s | Translated container tmpdir %s to host path %s",
+                    workspace_id, tmpdir, mount_source)
+
     try:
         container = client.containers.run(
             image   = settings.docker_image,
@@ -170,7 +179,7 @@ def _run_container_sync(
             # entrypoint can write a.out and wave.vcd.  The rest of the
             # container's root FS is read-only.
             volumes={
-                tmpdir: {"bind": "/workspace", "mode": "rw"},
+                mount_source: {"bind": "/workspace", "mode": "rw"},
             },
             read_only=True,
 

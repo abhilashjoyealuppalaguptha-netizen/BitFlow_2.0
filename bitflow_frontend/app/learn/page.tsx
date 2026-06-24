@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import ScrollUnlock from "@/components/ScrollUnlock";
+import ScrollUnlock from "../../components/ScrollUnlock";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 
 // ─────────────────────────────────────────────────────────────────────────────

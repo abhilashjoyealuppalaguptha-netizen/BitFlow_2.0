@@ -84,6 +84,7 @@ def create_workspace() -> tuple[str, str]:
     """
     workspace_id = secrets.token_hex(6)          # 12-char hex, e.g. "3f9a2b1c4d8e"
     tmpdir = tempfile.mkdtemp(prefix=f"verilog_{workspace_id}_")
+    os.chmod(tmpdir, 0o777)
     return tmpdir, workspace_id
 
 
@@ -106,8 +107,12 @@ def write_source_files(
     Raises:
         OSError if the directory is not writable.
     """
-    Path(tmpdir, "design.v").write_text(design_v, encoding="utf-8")
-    Path(tmpdir, "tb.v").write_text(testbench_v, encoding="utf-8")
+    design_path = Path(tmpdir, "design.v")
+    tb_path = Path(tmpdir, "tb.v")
+    design_path.write_text(design_v, encoding="utf-8")
+    tb_path.write_text(testbench_v, encoding="utf-8")
+    os.chmod(design_path, 0o644)
+    os.chmod(tb_path, 0o644)
 
 
 def cleanup_workspace(tmpdir: str) -> None:

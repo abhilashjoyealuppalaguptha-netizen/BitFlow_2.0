@@ -77,7 +77,14 @@ WORKDIR /workspace
 #   • clean exit codes for the calling FastAPI backend to inspect
 # =============================================================================
 COPY --chown=sandbox:sandbox entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 550 /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 550 /usr/local/bin/entrypoint.sh
+
+
+# =============================================================================
+# Source files (design + testbench)
+# Copied into /workspace so the sandbox can compile and simulate them.
+# =============================================================================
+COPY --chown=sandbox:sandbox api/workspace/design.v api/workspace/tb.v /workspace/
 
 
 # =============================================================================

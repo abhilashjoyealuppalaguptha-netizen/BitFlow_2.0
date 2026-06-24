@@ -21,7 +21,7 @@ import {
 }                             from "react";
 import { notFound }           from "next/navigation";
 import dynamic                from "next/dynamic";
-import ProblemToolbar         from "@/components/ProblemToolbar";
+import ProblemToolbar         from "../../../components/ProblemToolbar";
 import ProblemStatement       from "@/components/ProblemStatement";
 import Terminal               from "@/components/Terminal";
 import WaveformPanel          from "@/components/WaveformPanel";

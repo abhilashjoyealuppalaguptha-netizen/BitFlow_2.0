@@ -84,6 +84,11 @@ class Settings(BaseSettings):
         description="Set to false only for debugging — never in production.",
     )
 
+    host_tmp_dir: str | None = Field(
+        default=None,
+        description="Host-side path to mapping of /tmp for sibling containers.",
+    )
+
     # ── Input validation ──────────────────────────────────────────────────────
     max_source_bytes: int = Field(
         default=512 * 1024,      # 512 KB
