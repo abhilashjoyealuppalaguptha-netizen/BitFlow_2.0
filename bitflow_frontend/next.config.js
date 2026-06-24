@@ -1,3 +1,5 @@
+const path = require("path");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // ─────────────────────────────────────────────────────────────────────────
@@ -14,6 +16,15 @@ const nextConfig = {
         { "monaco-editor": "monaco-editor" },
       ];
     }
+
+    // ── Fix @/ alias resolution on all environments (local + Render) ──────
+    // Explicitly map @/ → the bitflow_frontend directory so webpack always
+    // resolves it correctly regardless of where the build is triggered from.
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(__dirname),
+    };
+
     return config;
   },
 
