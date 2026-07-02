@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "start:render": "prisma migrate deploy && prisma db seed && next start",
+    "start:render": "mkdir -p /var/data && prisma migrate deploy && prisma db seed && next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
