@@ -37,6 +37,12 @@ export default function AcademyHubPage() {
         </div>
         <div className="flex items-center gap-4">
           <Link
+            href="/"
+            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
+          >
+            Home
+          </Link>
+          <Link
             href="/learn"
             className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
           >
@@ -49,10 +55,10 @@ export default function AcademyHubPage() {
             HDL Arena
           </Link>
           <Link
-            href="/"
+            href="/sandbox"
             className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
           >
-            ← Sandbox
+            Sandbox
           </Link>
         </div>
       </header>

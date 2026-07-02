@@ -521,7 +521,25 @@ const advancedQuestions = questions.filter(
             href="/"
             className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
           >
-            ← Sandbox
+            Home
+          </Link>
+          <Link
+            href="/sandbox"
+            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
+          >
+            Sandbox
+          </Link>
+          <Link
+            href="/arena"
+            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
+          >
+            Arena
+          </Link>
+          <Link
+            href="/academy"
+            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
+          >
+            Academy
           </Link>
         </div>
       </header>
