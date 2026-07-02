@@ -10,8 +10,11 @@ const isThrowawaySqlite =
   !databaseUrl ||
   databaseUrl === "file:./dev.db" ||
   databaseUrl === "file:./prisma/dev.db";
+const isBuildStep =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.npm_lifecycle_event === "build";
 
-if (process.env.NODE_ENV === "production" && isRender && isThrowawaySqlite) {
+if (process.env.NODE_ENV === "production" && isRender && isThrowawaySqlite && !isBuildStep) {
   throw new Error(
     "DATABASE_URL must point to a persistent Render disk, for example file:/var/data/bitflow.db"
   );
