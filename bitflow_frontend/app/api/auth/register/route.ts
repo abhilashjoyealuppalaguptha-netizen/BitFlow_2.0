@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const { username, password, role, secretPassword } = await request.json();
+    const normalizedUsername = typeof username === "string" ? username.trim() : "";
 
-    if (!username || !password || !role) {
+    if (!normalizedUsername || !password || !role) {
       return NextResponse.json(
         { error: "Username, password, and role are required." },
         { status: 400 }
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { username },
+      where: { username: normalizedUsername },
     });
 
     if (existingUser) {
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     const passwordHash = hashPassword(password);
     const user = await prisma.user.create({
       data: {
-        username,
+        username: normalizedUsername,
         password: passwordHash,
         role,
         xp: {

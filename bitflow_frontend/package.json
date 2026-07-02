@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:render": "prisma migrate deploy && prisma db seed && next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
@@ -36,4 +37,3 @@
     "seed": "tsx prisma/seed.ts"
   }
 }
-

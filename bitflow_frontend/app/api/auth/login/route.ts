@@ -8,16 +8,24 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const { username, password, role } = await request.json();
+    const normalizedUsername = typeof username === "string" ? username.trim() : "";
 
-    if (!username || !password || !role) {
+    if (!normalizedUsername || !password || !role) {
       return NextResponse.json(
         { error: "Username, password, and role are required." },
         { status: 400 }
       );
     }
 
+    if (role !== "STUDENT" && role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Invalid role specified." },
+        { status: 400 }
+      );
+    }
+
     const user = await prisma.user.findUnique({
-      where: { username },
+      where: { username: normalizedUsername },
     });
 
     if (!user) {
@@ -27,10 +35,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify role matches
-    if (user.role !== role) {
+    // Student login should not fail because of a stale/wrong role toggle.
+    // Admin login remains explicitly protected.
+    if (role === "ADMIN" && user.role !== "ADMIN") {
       return NextResponse.json(
-        { error: `This account is registered as a ${user.role}, not an ${role}.` },
+        { error: "This account is not registered as an ADMIN." },
         { status: 400 }
       );
     }
