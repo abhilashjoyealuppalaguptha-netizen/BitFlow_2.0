@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "../../hooks/useAuth";
-import { useRouter } from "next/navigation";
 
 interface QuestionSummary {
   id: string;
@@ -16,12 +15,27 @@ interface QuestionSummary {
   xpReward: number;
 }
 
+interface UserSummary {
+  id: string;
+  username: string;
+  role: string;
+  createdAt: string;
+  _count: {
+    progress: number;
+    submissions: number;
+  };
+}
+
 export default function AdminDashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   
   // State for fetching list of questions & analytics
   const [questions, setQuestions] = useState<QuestionSummary[]>([]);
+  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalSubmissions, setTotalSubmissions] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   
   // Form State
   const [id, setId] = useState("");
@@ -50,8 +64,8 @@ export default function AdminDashboard() {
       setLoadingList(true);
       const res = await fetch("/api/problems");
       const data = await res.json();
-      if (res.ok && data.questions) {
-        setQuestions(data.questions);
+      if (res.ok) {
+        setQuestions(data.problems ?? data.questions ?? []);
       }
     } catch (err) {
       console.error("Failed to load questions list:", err);
@@ -60,8 +74,26 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const res = await fetch("/api/admin/users");
+      const data = await res.json();
+      if (res.ok) {
+        setUsers(data.users ?? []);
+        setTotalUsers(data.totalUsers ?? 0);
+        setTotalSubmissions(data.totalSubmissions ?? 0);
+      }
+    } catch (err) {
+      console.error("Failed to load user list:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
   useEffect(() => {
     fetchQuestions();
+    fetchUsers();
   }, []);
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -142,11 +174,6 @@ export default function AdminDashboard() {
 
   const categoryCounts = questions.reduce((acc, q) => {
     acc[q.category] = (acc[q.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const moduleCounts = questions.reduce((acc, q) => {
-    acc[q.moduleId] = (acc[q.moduleId] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
@@ -442,6 +469,14 @@ export default function AdminDashboard() {
                 <span className="block text-[8px] text-dim uppercase">Average XP Reward</span>
                 <span className="text-2xl font-bold text-info">{avgXpReward} XP</span>
               </div>
+              <div className="bg-pit/40 border border-rim/30 rounded p-3">
+                <span className="block text-[8px] text-dim uppercase">Registered Users</span>
+                <span className="text-2xl font-bold text-phosphor">{totalUsers}</span>
+              </div>
+              <div className="bg-pit/40 border border-rim/30 rounded p-3">
+                <span className="block text-[8px] text-dim uppercase">Saved Submissions</span>
+                <span className="text-2xl font-bold text-warn">{totalSubmissions}</span>
+              </div>
             </div>
 
             {/* Difficulty Chart */}
@@ -498,6 +533,52 @@ export default function AdminDashboard() {
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Beta User Visibility */}
+          <div className="bg-surface/30 border border-rim/50 rounded-lg p-6 shadow-lg">
+            <div className="border-b border-rim/40 pb-3 mb-4">
+              <h2 className="text-[13px] font-bold text-info uppercase">
+                Recent Beta Users ({totalUsers})
+              </h2>
+              <p className="text-[9px] text-dim/80">
+                Confirms registration, progress, and submission records are reaching the database.
+              </p>
+            </div>
+
+            {loadingUsers ? (
+              <div className="py-6 text-center text-[10px] text-dim animate-pulse">
+                Reading user registry...
+              </div>
+            ) : users.length === 0 ? (
+              <div className="py-6 text-center text-[10px] text-dim">
+                No users found in this database.
+              </div>
+            ) : (
+              <div className="max-h-[220px] overflow-y-auto pr-1 space-y-2">
+                {users.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between p-2 rounded bg-pit/20 border border-rim/30"
+                  >
+                    <div className="min-w-0">
+                      <span className="block text-[11px] text-pale font-bold truncate">
+                        {u.username}
+                      </span>
+                      <span className="block text-[8px] text-dim/60 mt-0.5">
+                        {new Date(u.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0 ml-4">
+                      <span className="block text-[8px] text-info uppercase">{u.role}</span>
+                      <span className="block text-[8px] text-dim/70">
+                        {u._count.submissions} submits · {u._count.progress} progress
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Questions List */}

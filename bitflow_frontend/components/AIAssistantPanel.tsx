@@ -211,6 +211,7 @@ const MessageBubble = memo(function MessageBubble({
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div className={[
         "max-w-[90%] px-2.5 py-2 rounded text-[10px] font-mono leading-relaxed",
+        "whitespace-pre-wrap break-words",
         isUser
           ? "bg-info/10 border border-info/20 text-pale"
           : "bg-surface border border-rim/60 text-pale",

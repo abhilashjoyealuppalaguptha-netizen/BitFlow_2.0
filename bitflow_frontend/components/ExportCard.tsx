@@ -332,29 +332,16 @@ const ExportCard = forwardRef<HTMLDivElement, ExportCardProps>(
         >
           {/* Left: BitFlow branding */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Circuit mark */}
-            <div
+            <img
+              src="/bitflow_logo_2.png"
+              alt="BitFlow"
               style={{
-                width:        28,
-                height:       28,
-                borderRadius: 4,
-                background:   "rgba(0,232,122,0.1)",
-                border:       `1px solid rgba(0,232,122,0.3)`,
-                display:      "flex",
-                alignItems:   "center",
-                justifyContent: "center",
-                flexShrink:   0,
+                width:      28,
+                height:     28,
+                objectFit:  "contain",
+                flexShrink: 0,
               }}
-            >
-              <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke={C.phosphor} strokeWidth="1.2">
-                <rect x="3" y="3" width="10" height="10" rx="1" />
-                <line x1="3" y1="8" x2="0" y2="8" />
-                <line x1="13" y1="8" x2="16" y2="8" />
-                <line x1="8" y1="3" x2="8" y2="0" />
-                <line x1="8" y1="13" x2="8" y2="16" />
-                <circle cx="8" cy="8" r="2" fill={C.phosphor} stroke="none" />
-              </svg>
-            </div>
+            />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.bright, letterSpacing: "0.05em" }}>
                 BitFlow

@@ -1,18 +1,10 @@
 ﻿"use client";
 
-import { useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "../hooks/useAuth";
-import { useRouter } from "next/navigation";
 
 export default function LandingPage() {
   const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && user) {
-      router.push("/sandbox");
-    }
-  }, [user, loading, router]);
 
   // Loading screen
   if (loading) {
@@ -32,9 +24,88 @@ export default function LandingPage() {
     );
   }
 
-  // Logged-in users briefly render nothing while redirecting
+  // Logged-in users see the product hub.
   if (user) {
-    return null;
+    const destinations = [
+      {
+        href: "/sandbox",
+        label: "Sandbox",
+        title: "BitFlow Sandbox IDE",
+        body: "Write, compile, simulate, inspect output, and export HDL work.",
+      },
+      {
+        href: "/learn",
+        label: "Learn",
+        title: "Learning Path",
+        body: "Move through structured Verilog problems with progress tracking.",
+      },
+      {
+        href: "/academy",
+        label: "Academy",
+        title: "Digital Electronics Academy",
+        body: "Study logic gates, Boolean algebra, sequential circuits, and FSMs.",
+      },
+      {
+        href: "/arena",
+        label: "Arena",
+        title: "HDL Arena",
+        body: "Practice interview-tier RTL challenges by difficulty.",
+      },
+    ];
+
+    return (
+      <main className="min-h-screen bg-void text-bright font-mono">
+        <header className="h-14 flex items-center justify-between px-6 bg-surface/90 border-b border-rim">
+          <Link href="/" className="flex items-center gap-3">
+            <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-8 h-8 object-contain" />
+            <div className="leading-none">
+              <div className="font-display text-[15px] font-bold">BitFlow</div>
+              <div className="text-[9px] text-dim uppercase tracking-widest">Home</div>
+            </div>
+          </Link>
+          <div className="text-[10px] text-ghost">
+            Signed in as <span className="text-phosphor">{user.username}</span>
+          </div>
+        </header>
+
+        <section className="max-w-6xl mx-auto px-6 py-12">
+          <div className="mb-8">
+            <p className="text-[10px] text-info uppercase tracking-widest mb-3">Choose workspace</p>
+            <h1 className="font-display text-4xl font-bold text-bright mb-3">
+              Welcome back to BitFlow.
+            </h1>
+            <p className="text-sm text-ghost max-w-2xl leading-relaxed">
+              Jump into the part of the platform you need today.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {destinations.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="group min-h-[180px] rounded-lg border border-rim bg-surface/35 p-5 flex flex-col justify-between hover:border-phosphor/50 hover:bg-surface/60 transition-colors"
+              >
+                <div>
+                  <span className="text-[9px] text-phosphor uppercase tracking-widest">
+                    {item.label}
+                  </span>
+                  <h2 className="mt-3 text-lg font-bold text-bright group-hover:text-phosphor transition-colors">
+                    {item.title}
+                  </h2>
+                  <p className="mt-3 text-[11px] text-ghost leading-relaxed">
+                    {item.body}
+                  </p>
+                </div>
+                <span className="mt-5 text-[10px] text-dim group-hover:text-phosphor transition-colors">
+                  Open
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   // Guest users see landing page

@@ -90,29 +90,17 @@ export default function Toolbar({
       <div className="flex items-center gap-4">
         {/* BitFlow mark */}
         <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-7 h-7">
-            <div className="absolute inset-0 rounded bg-phosphor/10 border border-phosphor/30" />
-            <svg
-              viewBox="0 0 16 16"
-              className="w-4 h-4 text-phosphor relative z-10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-            >
-              <rect x="3" y="3" width="10" height="10" rx="1" />
-              <line x1="3" y1="8" x2="0" y2="8" />
-              <line x1="13" y1="8" x2="16" y2="8" />
-              <line x1="8" y1="3" x2="8" y2="0" />
-              <line x1="8" y1="13" x2="8" y2="16" />
-              <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
-            </svg>
-          </div>
+          <img
+            src="/bitflow_logo_2.png"
+            alt="BitFlow"
+            className="w-7 h-7 object-contain rounded opacity-90"
+          />
           <div className="flex flex-col leading-none">
             <span className="font-display text-[13px] font-semibold text-bright tracking-wide">
               BitFlow
             </span>
             <span className="font-mono text-[9px] text-dim tracking-[0.2em] uppercase">
-              HDL Arena
+              Sandbox IDE
             </span>
           </div>
         </div>
@@ -120,13 +108,13 @@ export default function Toolbar({
         {/* ── Nav links ─────────────────────────────────────────────────── */}
         <nav className="hidden sm:flex items-center gap-1">
           {[
-            { href: "/",        label: "🖥️ Sandbox" },
-            { href: "/learn",   label: "🎓 Learn"   },
-            { href: "/arena",   label: "🏟️ Arena"   },
-            { href: "/academy", label: "📚 Academy" },
-            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "⚙️ Admin" }] : []),
+            ...(pathname.startsWith("/sandbox") ? [] : [{ href: "/sandbox", label: "Sandbox" }]),
+            { href: "/learn", label: "Learn" },
+            { href: "/arena", label: "Arena" },
+            { href: "/academy", label: "Academy" },
+            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
           ].map(({ href, label }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}

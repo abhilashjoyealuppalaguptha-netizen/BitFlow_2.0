@@ -40,7 +40,13 @@ export default function AcademyHubPage() {
             href="/learn"
             className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
           >
-            Problem Arena
+            Learning Path
+          </Link>
+          <Link
+            href="/arena"
+            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
+          >
+            HDL Arena
           </Link>
           <Link
             href="/"

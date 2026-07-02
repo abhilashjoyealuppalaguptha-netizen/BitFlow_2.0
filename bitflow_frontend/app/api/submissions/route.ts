@@ -11,7 +11,10 @@
  */
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST — Save a submission (from run or submit)
@@ -60,11 +63,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // If userId provided, look up user; otherwise skip
+    const sessionUserId = cookies().get("bitflow_session")?.value;
+    const effectiveUserId = sessionUserId ?? userId;
+
+    // Prefer the signed-in session user. The body userId is only a legacy fallback.
     let dbUserId: string | null = null;
-    if (userId) {
+    if (effectiveUserId) {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: effectiveUserId },
         select: { id: true },
       });
       if (user) {
