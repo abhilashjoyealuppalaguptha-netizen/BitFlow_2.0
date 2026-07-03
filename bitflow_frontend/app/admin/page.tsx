@@ -26,6 +26,22 @@ interface UserSummary {
   };
 }
 
+interface DbHealth {
+  bootId: string;
+  bootedAt: string;
+  databaseUrl: string | null;
+  usingRenderDisk: boolean;
+  counts: {
+    users: number;
+    submissions: number;
+    progress: number;
+    questions: number;
+  };
+  firstUser: { username: string; createdAt: string } | null;
+  latestUser: { username: string; createdAt: string } | null;
+  latestSubmission: { id: string; createdAt: string; accepted: boolean } | null;
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth();
   
@@ -34,6 +50,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
+  const [dbHealth, setDbHealth] = useState<DbHealth | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(true);
   
@@ -91,9 +108,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchDbHealth = async () => {
+    try {
+      const res = await fetch("/api/admin/db-health");
+      const data = await res.json();
+      if (res.ok) {
+        setDbHealth(data);
+      }
+    } catch (err) {
+      console.error("Failed to load DB health:", err);
+    }
+  };
+
   useEffect(() => {
     fetchQuestions();
     fetchUsers();
+    fetchDbHealth();
   }, []);
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -620,6 +650,74 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Database Health */}
+          <div className="bg-surface/30 border border-rim/50 rounded-lg p-6 shadow-lg">
+            <div className="border-b border-rim/40 pb-3 mb-4">
+              <h2 className="text-[13px] font-bold text-info uppercase">
+                Database Health
+              </h2>
+              <p className="text-[9px] text-dim/80">
+                Confirms whether the live service is using persistent storage.
+              </p>
+            </div>
+
+            {!dbHealth ? (
+              <div className="py-4 text-center text-[10px] text-dim animate-pulse">
+                Checking database runtime...
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className={[
+                  "rounded border px-3 py-2 text-[10px]",
+                  dbHealth.usingRenderDisk
+                    ? "border-phosphor/30 bg-phosphor/5 text-phosphor"
+                    : "border-danger/30 bg-danger/10 text-danger",
+                ].join(" ")}>
+                  {dbHealth.usingRenderDisk
+                    ? "Persistent Render disk detected"
+                    : "Not using /var/data persistent disk"}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                  <div className="rounded border border-rim/30 bg-pit/30 p-2">
+                    <span className="block text-dim uppercase">DB URL</span>
+                    <span className="block text-ghost break-all">{dbHealth.databaseUrl ?? "not set"}</span>
+                  </div>
+                  <div className="rounded border border-rim/30 bg-pit/30 p-2">
+                    <span className="block text-dim uppercase">Boot ID</span>
+                    <span className="block text-ghost">{dbHealth.bootId}</span>
+                  </div>
+                  <div className="rounded border border-rim/30 bg-pit/30 p-2">
+                    <span className="block text-dim uppercase">Booted</span>
+                    <span className="block text-ghost">{new Date(dbHealth.bootedAt).toLocaleString()}</span>
+                  </div>
+                  <div className="rounded border border-rim/30 bg-pit/30 p-2">
+                    <span className="block text-dim uppercase">Rows</span>
+                    <span className="block text-ghost">
+                      U:{dbHealth.counts.users} S:{dbHealth.counts.submissions} P:{dbHealth.counts.progress}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-[9px] text-dim/80 leading-relaxed">
+                  First user:{" "}
+                  <span className="text-ghost">
+                    {dbHealth.firstUser
+                      ? `${dbHealth.firstUser.username} (${new Date(dbHealth.firstUser.createdAt).toLocaleString()})`
+                      : "none"}
+                  </span>
+                  <br />
+                  Latest user:{" "}
+                  <span className="text-ghost">
+                    {dbHealth.latestUser
+                      ? `${dbHealth.latestUser.username} (${new Date(dbHealth.latestUser.createdAt).toLocaleString()})`
+                      : "none"}
+                  </span>
+                </div>
               </div>
             )}
           </div>

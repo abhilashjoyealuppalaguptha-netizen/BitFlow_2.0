@@ -5,7 +5,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    cookies().delete("bitflow_session");
+    cookies().set("bitflow_session", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 0,
+      path: "/",
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Logout error:", err);
