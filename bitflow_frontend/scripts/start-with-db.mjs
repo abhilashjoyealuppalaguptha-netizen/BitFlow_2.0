@@ -41,24 +41,55 @@ function run(args) {
 const schemaPath = join(__dirname, "..", "prisma", "schema.prisma");
 try {
   let schema = readFileSync(schemaPath, "utf-8");
-  
+
   const isPostgres = databaseUrl?.startsWith("postgres://") || databaseUrl?.startsWith("postgresql://");
   const targetProvider = isPostgres ? "postgresql" : "sqlite";
-  
+
+  // Detect current provider
   const currentProviderMatch = schema.match(/provider\s*=\s*"([^"]+)"/);
   const currentProvider = currentProviderMatch ? currentProviderMatch[1] : null;
-  
+
   if (currentProvider && currentProvider !== targetProvider) {
     console.log(`[DB Setup] Switching provider in schema.prisma from "${currentProvider}" to "${targetProvider}"...`);
+
     // Replace provider line
-    schema = schema.replace(/provider\s*=\s*"([^"]+)"/, `provider = "${targetProvider}"`);
+    schema = schema.replace(
+      /provider\s*=\s*"[^"]+"/,
+      `provider  = "${targetProvider}"`
+    );
+
+    // Handle directUrl: PostgreSQL needs it, SQLite does not support it
+    if (targetProvider === "postgresql") {
+      // Ensure directUrl line exists
+      if (!schema.includes("directUrl")) {
+        schema = schema.replace(
+          /(url\s*=\s*env\("DATABASE_URL"\))/,
+          `$1\n  directUrl = env("DIRECT_URL")`
+        );
+      }
+    } else {
+      // Remove directUrl line for SQLite (not supported)
+      schema = schema.replace(/\n\s*directUrl\s*=\s*env\("DIRECT_URL"\)/, "");
+    }
+
     writeFileSync(schemaPath, schema, "utf-8");
-    
+
     // Generate Prisma Client for the new provider
     console.log("[DB Setup] Regenerating Prisma Client...");
     run(["prisma", "generate"]);
   } else {
     console.log(`[DB Setup] Database provider is already set to "${targetProvider}".`);
+
+    // Even if provider matches, ensure directUrl is correct
+    if (targetProvider === "postgresql" && !schema.includes("directUrl")) {
+      schema = schema.replace(
+        /(url\s*=\s*env\("DATABASE_URL"\))/,
+        `$1\n  directUrl = env("DIRECT_URL")`
+      );
+      writeFileSync(schemaPath, schema, "utf-8");
+      console.log("[DB Setup] Added directUrl for PostgreSQL connection pooling.");
+      run(["prisma", "generate"]);
+    }
   }
 } catch (err) {
   console.error("[DB Setup] Failed to dynamically adjust prisma schema:", err);
