@@ -479,6 +479,49 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            <div className="mb-6 rounded border border-rim/40 bg-pit/25 p-3">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-[10px] font-bold text-info uppercase tracking-wider">
+                    LLM Training Exports
+                  </h3>
+                  <p className="text-[8px] text-dim/80 mt-1">
+                    Admin-only downloads. Passwords are never exported.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <a
+                  href="/api/admin/export?dataset=submissions&format=jsonl"
+                  download
+                  className="text-center rounded border border-phosphor/30 bg-phosphor/5 px-3 py-2 text-[9px] text-phosphor hover:bg-phosphor/10 transition-colors"
+                >
+                  Submissions JSONL
+                </a>
+                <a
+                  href="/api/admin/export?dataset=submissions&format=json"
+                  download
+                  className="text-center rounded border border-info/30 bg-info/5 px-3 py-2 text-[9px] text-info hover:bg-info/10 transition-colors"
+                >
+                  Submissions JSON
+                </a>
+                <a
+                  href="/api/admin/export?dataset=all&format=json"
+                  download
+                  className="text-center rounded border border-warn/30 bg-warn/5 px-3 py-2 text-[9px] text-warn hover:bg-warn/10 transition-colors"
+                >
+                  Full Data JSON
+                </a>
+                <a
+                  href="/api/admin/export?dataset=submissions&format=jsonl&includeWaveforms=true"
+                  download
+                  className="text-center rounded border border-rim/70 bg-surface/50 px-3 py-2 text-[9px] text-ghost hover:text-pale hover:border-rim transition-colors"
+                >
+                  JSONL + Waveforms
+                </a>
+              </div>
+            </div>
+
             {/* Difficulty Chart */}
             <div className="space-y-3 mb-6">
               <span className="block text-[9px] text-dim uppercase tracking-wider">Difficulty Pattern</span>
