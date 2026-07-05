@@ -32,7 +32,7 @@ export default function LoginPage() {
           }
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/sandbox");
+            router.push(role === "ADMIN" ? "/admin" : "/");
           }, 500);
         }
       } else {
@@ -41,7 +41,7 @@ export default function LoginPage() {
           setErrorMsg(res.error);
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/sandbox");
+            router.push(role === "ADMIN" ? "/admin" : "/");
           }, 500);
         }
       }
