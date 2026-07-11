@@ -69,12 +69,18 @@ const config: Config = {
           "0%, 100%": { boxShadow: "0 0 4px 1px #00e87a66" },
           "50%":      { boxShadow: "0 0 10px 3px #00e87acc" },
         },
+        // Floating up and down for the 3D chip
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%":      { transform: "translateY(-15px)" },
+        },
       },
       animation: {
         blink:      "blink 1.1s step-end infinite",
         pulse_soft: "pulse_soft 1.5s ease-in-out infinite",
         slide_up:   "slide_up 0.15s ease-out both",
         glow:       "glow 2s ease-in-out infinite",
+        float:      "float 4s ease-in-out infinite",
       },
 
       // ── Spacing extras ───────────────────────────────────────────────────

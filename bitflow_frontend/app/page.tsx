@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useAuth } from "../hooks/useAuth";
@@ -6,704 +6,222 @@ import { useAuth } from "../hooks/useAuth";
 export default function LandingPage() {
   const { user, loading } = useAuth();
 
-  // Loading screen
+  // Navigation Links
+  const navLinks = [
+    { label: "Home", href: "/", active: true },
+    { label: "Sandbox IDE", href: "/sandbox" },
+    { label: "Learning", href: "/learn" },
+    { label: "Academy", href: "/academy" },
+    { label: "Arena", href: "/arena" },
+  ];
+
+  // Feature Cards Data
+  const cards = [
+    {
+      href: "/sandbox",
+      title: "Sandbox IDE",
+      body: "Write, compile, simulate and debug Verilog/SystemVerilog projects in a powerful online IDE.",
+      action: "Launch Sandbox",
+      colorClass: "text-phosphor",
+      bgClass: "bg-phosphor/10",
+      borderHover: "hover:border-phosphor/50",
+      shadowHover: "hover:shadow-[0_0_30px_rgba(0,232,122,0.15)]",
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      )
+    },
+    {
+      href: "/learn",
+      title: "Learning Path",
+      body: "Follow structured learning paths with hands-on exercises and progress tracking.",
+      action: "Continue Learning",
+      colorClass: "text-blue-500",
+      bgClass: "bg-blue-500/10",
+      borderHover: "hover:border-blue-500/50",
+      shadowHover: "hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]",
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      )
+    },
+    {
+      href: "/academy",
+      title: "Digital Electronics Academy",
+      body: "Master digital electronics, logic design, sequential circuits, FSMs, and computer architecture.",
+      action: "Explore Academy",
+      colorClass: "text-purple-500",
+      bgClass: "bg-purple-500/10",
+      borderHover: "hover:border-purple-500/50",
+      shadowHover: "hover:shadow-[0_0_30px_rgba(168,85,247,0.15)]",
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path d="M12 14l9-5-9-5-9 5 9 5z" />
+          <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" />
+        </svg>
+      )
+    },
+    {
+      href: "/arena",
+      title: "HDL Arena",
+      body: "Solve real-world RTL and verification challenges. Practice, compete and improve your skills.",
+      action: "Enter Arena",
+      colorClass: "text-amber-500",
+      bgClass: "bg-amber-500/10",
+      borderHover: "hover:border-amber-500/50",
+      shadowHover: "hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]",
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+      )
+    }
+  ];
+
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#020609",
-          color: "#fff",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
+      <div className="min-h-screen bg-void text-bright flex items-center justify-center">
         Loading...
       </div>
     );
   }
 
-  // Logged-in users see the product hub.
-  if (user) {
-    const destinations = [
-      {
-        href: "/sandbox",
-        label: "Sandbox",
-        title: "BitFlow Sandbox IDE",
-        body: "Write, compile, simulate, inspect output, and export HDL work.",
-      },
-      {
-        href: "/learn",
-        label: "Learn",
-        title: "Learning Path",
-        body: "Move through structured Verilog problems with progress tracking.",
-      },
-      {
-        href: "/academy",
-        label: "Academy",
-        title: "Digital Electronics Academy",
-        body: "Study logic gates, Boolean algebra, sequential circuits, and FSMs.",
-      },
-      {
-        href: "/arena",
-        label: "Arena",
-        title: "HDL Arena",
-        body: "Practice interview-tier RTL challenges by difficulty.",
-      },
-    ];
+  return (
+    <main className="min-h-screen bg-void text-bright font-sans overflow-x-hidden selection:bg-phosphor/30">
+      {/* Dynamic Background Glows */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-phosphor/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-phosphor/10 rounded-full blur-[150px] pointer-events-none" />
 
-    return (
-      <main className="min-h-screen bg-void text-bright font-mono">
-        <header className="h-14 flex items-center justify-between px-6 bg-surface/90 border-b border-rim">
+      {/* Navigation */}
+      <nav className="relative z-10 flex items-center justify-between px-8 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
+        <div className="flex items-center gap-12">
+          {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
             <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-8 h-8 object-contain" />
-            <div className="leading-none">
-              <div className="font-display text-[15px] font-bold">BitFlow</div>
-              <div className="text-[9px] text-dim uppercase tracking-widest">Home</div>
-            </div>
+            <span className="font-display font-bold text-xl tracking-wide">BitFlow</span>
           </Link>
-          <div className="text-[10px] text-ghost">
-            Signed in as <span className="text-phosphor">{user.username}</span>
-          </div>
-        </header>
-
-        <section className="max-w-6xl mx-auto px-6 py-12">
-          <div className="mb-8">
-            <p className="text-[10px] text-info uppercase tracking-widest mb-3">Choose workspace</p>
-            <h1 className="font-display text-4xl font-bold text-bright mb-3">
-              Welcome back to BitFlow.
-            </h1>
-            <p className="text-sm text-ghost max-w-2xl leading-relaxed">
-              Jump into the part of the platform you need today.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {destinations.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group min-h-[180px] rounded-lg border border-rim bg-surface/35 p-5 flex flex-col justify-between hover:border-phosphor/50 hover:bg-surface/60 transition-colors"
+          
+          {/* Links */}
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            {navLinks.map((link) => (
+              <Link 
+                key={link.label} 
+                href={link.href}
+                className={`${link.active ? 'text-phosphor border-b-2 border-phosphor pb-1' : 'text-ghost hover:text-bright transition-colors pb-1'}`}
               >
-                <div>
-                  <span className="text-[9px] text-phosphor uppercase tracking-widest">
-                    {item.label}
-                  </span>
-                  <h2 className="mt-3 text-lg font-bold text-bright group-hover:text-phosphor transition-colors">
-                    {item.title}
-                  </h2>
-                  <p className="mt-3 text-[11px] text-ghost leading-relaxed">
-                    {item.body}
-                  </p>
-                </div>
-                <span className="mt-5 text-[10px] text-dim group-hover:text-phosphor transition-colors">
-                  Open
-                </span>
+                {link.label}
               </Link>
             ))}
           </div>
-        </section>
-      </main>
-    );
-  }
+        </div>
 
-  // Guest users see landing page
-  return (
-  <div
-    style={{
-      minHeight: "100vh",
-      background:
-        "radial-gradient(circle at top left, rgba(0,232,122,.08), transparent 40%), #020609",
-      color: "#fff",
-      overflow: "hidden",
-      position: "relative",
-    }}
-  >
-    {/* Stars */}
-<div
-  style={{
-    position: "absolute",
-    inset: 0,
-    backgroundImage: `
-      radial-gradient(white 1px, transparent 1px),
-      radial-gradient(white 1px, transparent 1px)
-    `,
-    backgroundSize: "140px 140px, 220px 220px",
-    backgroundPosition: "0 0, 80px 100px",
-    opacity: 0.22,
-    pointerEvents: "none",
-    zIndex: 0,
-  }}
-/>
-{/* Background Logo */}
-<img
-  src="/bitflow_logo_2.png"
-  alt=""
-  style={{
-    position: "absolute",
-    top: "10%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
+        {/* Right Nav */}
+        <div className="flex items-center gap-6">
+          <button className="text-ghost hover:text-bright transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </button>
+          <button className="text-ghost hover:text-bright transition-colors relative">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+            <span className="absolute top-0 right-0 w-2 h-2 bg-phosphor rounded-full"></span>
+          </button>
+          {user ? (
+            <div className="flex items-center gap-2 cursor-pointer group">
+              <div className="w-8 h-8 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-sm">
+                {user.username.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-medium text-pale group-hover:text-bright transition-colors">
+                {user.username}
+              </span>
+            </div>
+          ) : (
+            <Link href="/login" className="px-5 py-2 rounded-full bg-phosphor/10 text-phosphor hover:bg-phosphor/20 border border-phosphor/30 transition-colors text-sm font-bold">
+              Sign In
+            </Link>
+          )}
+        </div>
+      </nav>
 
-    width: "900px",
+      {/* Hero Section */}
+      <section className="relative z-10 max-w-7xl mx-auto px-8 pt-20 pb-16 flex flex-col lg:flex-row items-center justify-between gap-12">
+        
+        {/* Left Text */}
+        <div className="flex-1 max-w-2xl">
+          {user && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-phosphor/10 border border-phosphor/20 text-phosphor text-[10px] font-bold tracking-widest mb-8 uppercase">
+              WELCOME BACK, {user.username} 👋
+            </div>
+          )}
+          
+          <h1 className="text-5xl md:text-6xl font-bold leading-[1.1] tracking-tight mb-6">
+            Everything you need to <br/>
+            <span className="text-phosphor">Design. Learn. Build.</span>
+          </h1>
+          
+          <p className="text-lg text-pale mb-10 max-w-xl leading-relaxed">
+            The all-in-one platform for RTL design, verification, and digital electronics learning.
+          </p>
 
-    opacity: 0.5,
-    filter: "blur(3px)",
+          <Link href="/sandbox" className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-phosphor text-void font-bold hover:bg-phosphor-glow transition-all hover:scale-105 shadow-[0_0_20px_rgba(0,232,122,0.3)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+            New Project
+          </Link>
+        </div>
 
-    pointerEvents: "none",
+        {/* Right Graphic (Animated Chip) */}
+        <div className="flex-1 relative flex items-center justify-center w-full max-w-[600px] h-[500px]">
+          {/* Circuit background glow */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,232,122,0.15),transparent_60%)]" />
+          
+          {/* Animated Chip Image */}
+          <img 
+            src="/glowing_microchip.png" 
+            alt="BitFlow Microchip" 
+            className="relative z-10 w-full h-auto object-contain animate-float drop-shadow-[0_0_30px_rgba(0,232,122,0.3)]"
+          />
+        </div>
+      </section>
 
-    zIndex: 0,
-  }}
-/>
-    {/* Navbar */}
-    <nav
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "24px 80px",
-        position: "relative",
-        zIndex: 10,
-      }}
-    >
-      <h2
-        style={{
-          color: "#00e87a",
-          fontSize: "1.6rem",
-          fontWeight: 700,
-        }}
-      >
-        BitFlow
-      </h2>
+      {/* Cards Section */}
+      <section className="relative z-10 max-w-7xl mx-auto px-8 pb-32">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {cards.map((card, i) => (
+            <Link 
+              key={i} 
+              href={card.href}
+              className={`group flex flex-col justify-between p-6 rounded-2xl bg-surface/40 backdrop-blur-xl border border-rim transition-all duration-300 ${card.borderHover} ${card.shadowHover} hover:-translate-y-1 min-h-[280px] relative overflow-hidden`}
+            >
+              {/* Top content */}
+              <div>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${card.bgClass} ${card.colorClass} border border-current/20`}>
+                  {card.icon}
+                </div>
+                <h3 className="text-xl font-bold text-bright mb-3">{card.title}</h3>
+                <p className="text-sm text-ghost leading-relaxed">{card.body}</p>
+              </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "32px",
-          alignItems: "center",
-        }}
-      >
-        <a href="/login" style={{ color: "#aaa" }}>Learn</a>
-
-        <a href="/login" style={{ color: "#aaa" }}>Arena</a>
-
-        <a href="/login" style={{ color: "#aaa" }}>Sandbox</a>
-
-        <a
-          href="/login"
-          style={{
-            background: "#00e87a",
-            color: "#020609",
-            padding: "12px 22px",
-            borderRadius: "8px",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          Get Started
-        </a>
-      </div>
-    </nav>
-
-    {/* Hero */}
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "80vh",
-        textAlign: "center",
-        position:"relative",
-        zIndex:10,
-      }}
-    >
-      <div
-        style={{
-          color: "#00e87a",
-          letterSpacing: "3px",
-          marginBottom: "20px",
-        }}
-      >
-        THE WORLD'S FIRST HDL CODING PLATFORM
-      </div>
-
-      <h1
-        style={{
-          fontSize: "5rem",
-          maxWidth: "1000px",
-          lineHeight: 1.05,
-          marginBottom: "30px",
-        }}
-      >
-        Master Verilog.
-        <br />
-        Simulate Instantly.
-        <br />
-        Build Silicon.
-      </h1>
-
-      <p
-        style={{
-          color: "#888",
-          fontSize: "1.2rem",
-          maxWidth: "700px",
-          lineHeight: 1.8,
-        }}
-      >
-        Learn digital design from logic gates to interview-tier FSMs.
-        Browser-based compilation and simulation. No setup required.
-      </p>
-
-      <div
-        style={{
-          marginTop: "50px",
-          display: "flex",
-          gap: "20px",
-        }}
-      >
-        <a
-          href="/login"
-          style={{
-            background: "#00e87a",
-            color: "#020609",
-            padding: "18px 32px",
-            borderRadius: "10px",
-            textDecoration: "none",
-            fontWeight: 700,
-          }}
-        >
-          Start Learning
-        </a>
-
-        <a
-          href="/login"
-          style={{
-            border: "1px solid rgba(255,255,255,.15)",
-            padding: "18px 32px",
-            borderRadius: "10px",
-            color: "white",
-            textDecoration: "none",
-          }}
-        >
-          Open Sandbox
-        </a>
-      </div>
-    </div>
-    {/* Stats */}
-<div
-  style={{
-    display: "flex",
-    justifyContent: "center",
-    gap: "80px",
-    marginTop: "60px",
-    color: "#888",
-    fontSize: "14px",
-    textAlign: "center",
-  }}
->
-  <div>
-    <h2 style={{ color: "#00e87a" }}>50+</h2>
-    Problems
-  </div>
-
-  <div>
-    <h2 style={{ color: "#00e87a" }}>Instant</h2>
-    Simulation
-  </div>
-
-  <div>
-    <h2 style={{ color: "#00e87a" }}>Browser</h2>
-    IDE
-  </div>
-
-  <div>
-    <h2 style={{ color: "#00e87a" }}>Arena</h2>
-    Competition
-  </div>
-</div>
-{/* Journey Heading */}
-<div
-  style={{
-    textAlign: "center",
-    marginTop: "120px",
-    marginBottom: "70px",
-  }}
->
-  <h1
-    style={{
-      fontSize: "4rem",
-      marginBottom: "20px",
-      fontWeight: 700,
-      lineHeight: 1.1,
-    }}
-  >
-    From Logic Gates to Silicon
-  </h1>
-
-  <p
-    style={{
-      color: "#888",
-      fontSize: "1.2rem",
-      maxWidth: "800px",
-      margin: "0 auto",
-      lineHeight: 1.8,
-    }}
-  >
-    BitFlow guides students through every stage of digital design,
-    from fundamentals to interview-ready RTL engineering.
-  </p>
-</div>
-    
-{/* Feature Cards */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-    gap: "30px",
-    padding: "120px 80px",
-    maxWidth: "1400px",
-    margin: "0 auto",
-  }}
-><div
-  style={{
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: "24px",
-    padding: "40px",
-    backdropFilter: "blur(20px)",
-  }}
->
-  <h2 style={{ color:"#00e87a", marginBottom:"20px" }}>
-    Learn
-  </h2>
-
-  <h1 style={{ fontSize:"2rem", marginBottom:"20px" }}>
-    Structured HDL Academy
-  </h1>
-
-  <p style={{ color:"#888", lineHeight:1.8 }}>
-    Learn Verilog from logic gates to interview-tier FSM design
-    with an XP based learning path.
-  </p>
-</div><div
-  style={{
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: "24px",
-    padding: "40px",
-    backdropFilter: "blur(20px)",
-  }}
->
-  <h2 style={{ color:"#00e87a", marginBottom:"20px" }}>
-    Sandbox
-  </h2>
-
-  <h1 style={{ fontSize:"2rem", marginBottom:"20px" }}>
-    Browser IDE
-  </h1>
-
-  <p style={{ color:"#888", lineHeight:1.8 }}>
-    Write, compile and simulate Verilog instantly.
-    No installations. No setup.
-  </p>
-</div><div
-  style={{
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: "24px",
-    padding: "40px",
-    backdropFilter: "blur(20px)",
-  }}
->
-  <h2 style={{ color:"#00e87a", marginBottom:"20px" }}>
-    Arena
-  </h2>
-
-  <h1 style={{ fontSize:"2rem", marginBottom:"20px" }}>
-    Interview Tier Problems
-  </h1>
-
-  <p style={{ color:"#888", lineHeight:1.8 }}>
-    Solve real RTL and FSM challenges designed for
-    VLSI interviews and competitions.
-  </p>
-</div><div
-  style={{
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: "24px",
-    padding: "40px",
-    backdropFilter: "blur(20px)",
-  }}
->
-  <h2 style={{ color:"#00e87a", marginBottom:"20px" }}>
-    Academy
-  </h2>
-
-  <h1 style={{ fontSize:"2rem", marginBottom:"20px" }}>
-    Digital Electronics Foundation
-  </h1>
-
-  <p style={{ color:"#888", lineHeight:1.8 }}>
-    Build the fundamentals of digital systems, Boolean algebra,
-    combinational circuits, sequential logic, counters and finite
-    state machines before diving into RTL design.
-  </p>
-</div></div>
-{/* Learning Journey */}
-<div
-  style={{
-    marginTop: "160px",
-    padding: "0 80px",
-    textAlign: "center",
-  }}
->
-  <div
-    style={{
-      color: "#00e87a",
-      letterSpacing: "3px",
-      marginBottom: "20px",
-    }}
-  >
-    STRUCTURED LEARNING
-  </div>
-
-  <h1
-    style={{
-      fontSize: "4rem",
-      marginBottom: "20px",
-    }}
-  >
-    From Logic Gates to Silicon
-  </h1>
-
-  <p
-    style={{
-      color: "#888",
-      maxWidth: "850px",
-      margin: "0 auto 80px auto",
-      lineHeight: 1.8,
-      fontSize: "1.1rem",
-    }}
-  >
-    BitFlow takes you through a complete HDL journey —
-    from combinational logic and flip-flops to FSMs,
-    protocols and interview-tier design problems.
-  </p>
-</div>
-<div
-  style={{
-    display: "flex",
-    justifyContent: "center",
-    gap: "30px",
-    flexWrap: "wrap",
-    marginBottom: "150px",
-  }}
->
-
-{/* Beginner */}
-<div style={{
-  width:"280px",
-  background:"rgba(255,255,255,.03)",
-  border:"1px solid rgba(255,255,255,.08)",
-  borderRadius:"18px",
-  padding:"30px"
-}}>
-  <h2 style={{color:"#00e87a"}}>Beginner</h2>
-  <p style={{color:"#888",lineHeight:1.8}}>
-    Logic gates, combinational circuits and sequential basics.
-  </p>
-</div>
-
-{/* Intermediate */}
-<div style={{
-  width:"280px",
-  background:"rgba(255,255,255,.03)",
-  border:"1px solid rgba(255,255,255,.08)",
-  borderRadius:"18px",
-  padding:"30px"
-}}>
-  <h2 style={{color:"#4db8ff"}}>Intermediate</h2>
-  <p style={{color:"#888",lineHeight:1.8}}>
-    Registers, counters, shift registers and memories.
-  </p>
-</div>
-
-{/* Advanced */}
-<div style={{
-  width:"280px",
-  background:"rgba(255,255,255,.03)",
-  border:"1px solid rgba(255,255,255,.08)",
-  borderRadius:"18px",
-  padding:"30px"
-}}>
-  <h2 style={{color:"#ffb84d"}}>Advanced</h2>
-  <p style={{color:"#888",lineHeight:1.8}}>
-    FSMs, protocols, pipelines and interview-grade RTL.
-  </p>
-</div>
-
-</div>
-{/* Arena Section */}
-<div
-style={{
-marginTop:"180px",
-padding:"0 80px",
-textAlign:"center"
-}}
->
-
-<div
-style={{
-color:"#ff4f4f",
-letterSpacing:"3px",
-marginBottom:"20px"
-}}
->
-HDL ARENA
-</div>
-
-<h1
-style={{
-fontSize:"4rem",
-marginBottom:"25px"
-}}
->
-Interview-Tier Challenges
-</h1>
-
-<p
-style={{
-maxWidth:"800px",
-margin:"0 auto",
-color:"#888",
-lineHeight:1.8,
-fontSize:"1.15rem"
-}}
->
-No hints. No hand-holding.
-Solve real FSM and RTL problems designed to prepare
-future VLSI engineers.
-</p>
-
-</div>
-<div
-style={{
-display:"flex",
-justifyContent:"center",
-gap:"30px",
-marginTop:"60px",
-flexWrap:"wrap"
-}}
->
-
-<div className="arena-badge">Easy</div>
-<div className="arena-badge">Medium</div>
-<div className="arena-badge">Hard</div>
-<div className="arena-badge">Expert</div>
-
-</div>
-<div
-style={{
-marginTop:"180px",
-padding:"0 80px",
-textAlign:"center"
-}}
->
-
-<div
-style={{
-color:"#00e87a",
-letterSpacing:"3px"
-}}
->
-BROWSER IDE
-</div>
-
-<h1
-style={{
-fontSize:"4rem",
-marginTop:"20px"
-}}
->
-Write HDL. Simulate Instantly.
-</h1>
-
-<p
-style={{
-maxWidth:"850px",
-margin:"40px auto",
-lineHeight:1.8,
-color:"#888"
-}}
->
-No installations.
-No setup.
-Just write Verilog and compile directly in your browser.
-</p>
-
-</div>
-{/* Footer */}
-<div
-  style={{
-    marginTop: "180px",
-    padding: "60px 0",
-    borderTop: "1px solid rgba(255,255,255,.08)",
-    textAlign: "center",
-  }}
->
-  <h3
-    style={{
-      color: "#00e87a",
-      fontSize: "1.5rem",
-      marginBottom: "16px",
-      fontWeight: 700,
-    }}
-  >
-    BitFlow
-  </h3>
-
-  <p
-    style={{
-      color: "#777",
-      fontSize: "15px",
-      lineHeight: 1.8,
-    }}
-  >
-    Built by <span style={{ color: "#fff" }}>NAVIEL</span>
-    <br />
-    Empowering the next generation of RTL engineers.
-  </p>
-
-  <div
-    style={{
-      marginTop: "30px",
-      color: "#555",
-      fontSize: "13px",
-    }}
-  >
-    © 2026 NAVIEL. All rights reserved.
-  </div>
-</div>
-    {/* Glow */}
-    <div
-      style={{
-        position: "absolute",
-        bottom: "-300px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "900px",
-        height: "900px",
-        borderRadius: "50%",
-        background:
-          "radial-gradient(circle, rgba(0,232,122,.2), transparent 70%)",
-        filter: "blur(100px)",
-        pointerEvents: "none",
-      }}
-    />
-  </div>
-  
-);
+              {/* Bottom action */}
+              <div className={`mt-6 flex items-center gap-2 text-sm font-bold ${card.colorClass} opacity-80 group-hover:opacity-100 transition-opacity`}>
+                {card.action}
+                <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </div>
+            </Link>
+          ))}
+        </div>
+        
+        {/* Carousel Indicators (Decorative as requested by the mockup) */}
+        <div className="flex items-center justify-center gap-3 mt-12">
+          <div className="w-2 h-2 rounded-full bg-phosphor glow"></div>
+          <div className="w-2 h-2 rounded-full bg-rim"></div>
+          <div className="w-2 h-2 rounded-full bg-rim"></div>
+          <div className="w-2 h-2 rounded-full bg-rim"></div>
+        </div>
+      </section>
+      
+    </main>
+  );
 }
