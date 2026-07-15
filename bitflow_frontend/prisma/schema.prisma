@@ -1,0 +1,180 @@
+datasource db {
+  provider  = "sqlite"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// USERS & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id          String         @id @default(uuid())
+  username    String         @unique
+  password    String
+  role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
+  createdAt   DateTime       @default(now())
+
+  // Relations
+  progress    UserProgress[]
+  xp          UserXp?
+  submissions Submission[]
+  sessions    Session[]
+}
+
+// ============================================================================
+// QUESTIONS / PROBLEMS
+// ============================================================================
+
+model Question {
+  id                  String   @id @default(uuid())
+  slug                String   @unique
+  title               String
+  difficulty          String   // "Easy" | "Medium" | "Hard" | "Expert"
+  category            String   // "FSM" | "Combinational" | "Sequential" etc.
+  tags                String   // JSON stringified string[]
+  learningLevel       String   // "Beginner" | "Intermediate" | "Advanced" | "Arena"
+  orderIndex          Int
+  moduleId            String
+
+  // Content
+  statement           String   // Markdown
+  constraints         String   // JSON stringified string[]
+  examples            String   // JSON stringified ProblemExample[]
+  hints               String   // JSON stringified Hint[]
+  solutionExplanation String?  // Markdown
+
+  // Code
+  starterCode         String
+  testbenchSkeleton   String?  // For Arena (user writes testbench)
+  publicTestbench     String
+  hiddenTestcases     String   // JSON stringified Testcase[]
+  hiddenTestbench     String?
+  publicTestcases     String   // JSON stringified Testcase[]
+
+  // Evaluation
+  expectedOutputMode  String   @default("stdout_compare")
+  waveformRequired    Boolean  @default(false)
+
+  // Rewards
+  xpReward            Int      @default(300)
+  xpBonusNoHints      Int?
+
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  progress            UserProgress[]
+  submissions         Submission[]
+}
+
+// ============================================================================
+// USER PROGRESS (Learning Path)
+// ============================================================================
+
+model UserProgress {
+  id            String    @id @default(uuid())
+  userId        String
+  problemId     String    // References Question.id
+
+  // Status
+  solved        Boolean   @default(false)
+  attempts      Int       @default(0)
+  firstSolvedAt DateTime?
+  xpEarned      Int       @default(0)
+  hintsUnlocked String    @default("[]") // JSON stringified number[]
+
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question      Question  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+}
+
+// ============================================================================
+// USER XP & MODULE UNLOCKS
+// ============================================================================
+
+model UserXp {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  totalXp         Int      @default(0)
+  unlockedModules String   @default("[\"mod_logic_gates\", \"mod_arithmetic\"]")
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================================
+// SUBMISSIONS — Critical for LLM Training Data Pipeline
+// ============================================================================
+
+model Submission {
+  id              String   @id @default(uuid())
+  userId          String?
+  problemId       String   // References Question.id
+
+  // The code user wrote
+  designCode      String   // design.v content
+  testbenchCode   String   // tb.v content (either public or user-written)
+
+  // Run type
+  submissionType  String   @default("RUN") // "RUN" | "SUBMIT"
+  attemptNumber   Int      @default(1)
+
+  // Simulation Results (captured verbatim from backend)
+  simStatus       String   // "SUCCESS" | "COMPILE_ERROR" | "RUNTIME_ERROR" | "TIMEOUT"
+  simStdout       String?  // Full stdout from iverilog/vvp
+  simStderr       String?  // Full stderr
+  simExitCode     Int?     // Raw exit code
+  durationMs      Int?     // Wall clock time of simulation
+
+  // Testcase Results (per-testcase breakdown)
+  testcaseResults String   @default("[]") // JSON: [{id, passed, expected, actual, description}]
+  numTestsPassed  Int      @default(0)
+  numTestsTotal   Int      @default(0)
+
+  // Waveform (for debugging/analysis)
+  waveformVcd     String?  // Base64-encoded VCD if available
+
+  // XP
+  xpEarned        Int      @default(0)
+  accepted        Boolean  @default(false) // True if ALL hidden testcases pass
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question        Question @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([problemId])
+  @@index([createdAt])
+  @@index([accepted])
+}
+
+// ============================================================================
+// SESSIONS (HTTP-only cookie auth)
+// ============================================================================
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique @default(uuid())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
