@@ -78,6 +78,7 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
+import AuthGate                       from "@/components/AuthGate";
 import ExportCard                     from "@/components/ExportCard";
 import { useSimulation }              from "@/hooks/useSimulation";
 import { useSplitter }                from "@/hooks/useSplitter";
@@ -560,6 +561,7 @@ export default function Page() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
+    <AuthGate>
     <div className="flex flex-col h-screen overflow-hidden bg-void scanlines">
 
       {/* ── Toolbar (48px, fixed) ───────────────────────────────────────── */}
@@ -808,5 +810,6 @@ export default function Page() {
         />
       )}
     </div>
+    </AuthGate>
   );
 }

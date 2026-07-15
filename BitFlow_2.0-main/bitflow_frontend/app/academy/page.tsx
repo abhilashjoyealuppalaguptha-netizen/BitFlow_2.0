@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import ScrollUnlock from "@/components/ScrollUnlock";
+import AuthGate from "@/components/AuthGate";
 import type { Metadata } from "next";
 import {
   ACADEMY_TOPIC_META,
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
 
 export default function AcademyHubPage() {
   return (
+    <AuthGate>
     <div className="min-h-screen bg-void text-bright">
       <ScrollUnlock />
 
@@ -136,5 +138,6 @@ export default function AcademyHubPage() {
         </p>
       </footer>
     </div>
+    </AuthGate>
   );
 }

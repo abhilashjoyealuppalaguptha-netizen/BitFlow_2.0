@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import ScrollUnlock from "../../components/ScrollUnlock";
+import AuthGate from "../../components/AuthGate";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -493,6 +494,7 @@ const advancedQuestions = questions.filter(
   ];
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-void text-bright flex flex-col">
       <ScrollUnlock />
       
@@ -589,5 +591,6 @@ const advancedQuestions = questions.filter(
         </p>
       </footer>
     </div>
+    </AuthGate>
   );
 }
