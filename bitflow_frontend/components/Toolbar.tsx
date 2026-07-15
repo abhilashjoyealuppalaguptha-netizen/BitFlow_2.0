@@ -226,14 +226,16 @@ export default function Toolbar({
         {/* User profile info & logout */}
         {user && (
           <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] text-ghost/85 font-mono">{user.username}</span>
-            <span className={`text-[8px] font-mono border px-1.5 py-0.5 rounded uppercase tracking-wider ${
-              user.role === "ADMIN" 
-                ? "border-info/30 bg-info/15 text-info font-bold" 
-                : "border-phosphor/30 bg-phosphor/10 text-phosphor"
-            }`}>
-              {user.role}
-            </span>
+            <Link href="/profile" className="flex items-center gap-2 group cursor-pointer hover:bg-surface py-0.5 px-1 rounded transition-colors">
+              <span className="text-[10px] text-ghost/85 font-mono group-hover:text-pale">{user.username}</span>
+              <span className={`text-[8px] font-mono border px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                user.role === "ADMIN" 
+                  ? "border-info/30 bg-info/15 text-info font-bold" 
+                  : "border-phosphor/30 bg-phosphor/10 text-phosphor"
+              }`}>
+                {user.role}
+              </span>
+            </Link>
             <button
               onClick={() => logout()}
               title="Logout session"
