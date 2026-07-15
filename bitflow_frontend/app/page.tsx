@@ -1,109 +1,205 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useAuth } from "../hooks/useAuth";
 
-/* ── Pure-CSS animated chip with circuit traces ─────────────────── */
-function AnimatedChip() {
+/* ── Nav links logo and Sign In ────────────────── */
+const NAV_LINKS = [
+  { label: "Sandbox IDE", href: "/sandbox" },
+  { label: "Learning", href: "/learn" },
+  { label: "Academy", href: "/academy" },
+  { label: "Arena", href: "/arena" },
+  { label: "About", href: "/about" },
+];
+
+/* ── Real product─────────────────────── */
+const STATS = [
+  { value: "97+", label: "Practice Problems" },
+  { value: "8", label: "Academy Modules" },
+  { value: "100%", label: "Browser-Based" },
+];
+
+/* ── Why BitFlow cards ─────────────────────────────────────────────── */
+const WHY_CARDS = [
+  {
+    title: "Browser-based Verilog IDE",
+    badge: "Zero Setup",
+    body: "Full write-to-simulate pipeline runs in your browser. No Vivado, no ModelSim — open a problem and start writing Verilog.",
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+      </svg>
+    ),
+  },
+  {
+    title: "Real-time Waveform Viewer",
+    badge: "Live Debug",
+    body: "Every simulation generates an interactive VCD waveform. Inspect signals and catch timing issues, inline.",
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4l3 8 4-16 3 8h4" />
+      </svg>
+    ),
+  },
+  {
+    title: "Structured Learning Path",
+    badge: "Guided",
+    body: "From number systems to FSMs, each Academy module builds on the last — with problems tied to every concept.",
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M12 6.25v13M12 6.25C10.83 5.48 9.25 5 7.5 5S4.17 5.48 3 6.25v13C4.17 18.48 5.75 18 7.5 18s3.33.48 4.5 1.25m0-13C13.17 5.48 14.75 5 16.5 5c1.75 0 3.33.48 4.5 1.25v13C19.83 18.48 18.25 18 16.5 18c-1.75 0-3.33.48-4.5 1.25"
+        />
+      </svg>
+    ),
+  },
+];
+
+/* ── Academy categories ────── */
+const CATEGORIES = [
+  { title: "Number Systems", tags: "Binary · Hex · BCD" },
+  { title: "Boolean Algebra", tags: "K-Maps · SOP · POS" },
+  { title: "Logic Gates", tags: "AND · OR · XOR" },
+  { title: "Combinational Logic", tags: "Mux · Decoder · Adder" },
+  { title: "Sequential Logic", tags: "Flip-Flops · Latches" },
+  { title: "FSMs", tags: "Mealy · Moore" },
+  { title: "Memory", tags: "RAM · ROM · FIFO" },
+  { title: "Timing", tags: "Setup · Hold · Skew" },
+];
+
+/* ── 12 traces ────────── */
+const TRACES = [
+  { d: "M170,180 L170,20" }, { d: "M210,180 L210,20" }, { d: "M250,180 L250,20" },
+  { d: "M170,320 L170,480" }, { d: "M210,320 L210,480" }, { d: "M250,320 L250,480" },
+  { d: "M140,210 L20,210" }, { d: "M140,250 L20,250" }, { d: "M140,290 L20,290" },
+  { d: "M280,210 L400,210" }, { d: "M280,250 L400,250" }, { d: "M280,290 L400,290" },
+];
+const PADS = [
+  { cx: 170, cy: 20 }, { cx: 210, cy: 20 }, { cx: 250, cy: 20 },
+  { cx: 170, cy: 480 }, { cx: 210, cy: 480 }, { cx: 250, cy: 480 },
+  { cx: 20, cy: 210 }, { cx: 20, cy: 250 }, { cx: 20, cy: 290 },
+  { cx: 400, cy: 210 }, { cx: 400, cy: 250 }, { cx: 400, cy: 290 },
+];
+const DIE_CELLS = [
+  { x: 151.4, y: 216.2, delay: "0s" },
+  { x: 176.2, y: 265.8, delay: ".3s" },
+  { x: 201, y: 191.4, delay: ".6s" },
+  { x: 201, y: 290.6, delay: ".9s" },
+  { x: 225.8, y: 241, delay: "1.2s" },
+  { x: 250.6, y: 216.2, delay: "1.5s" },
+  { x: 176.2, y: 216.2, delay: "1.8s" },
+  { x: 225.8, y: 290.6, delay: "2.1s" },
+];
+const GR_RINGS = [
+  { x: 180, y: 220, s: 60 },
+  { x: 162.7, y: 202.7, s: 94.6 },
+  { x: 134.9, y: 174.9, s: 150.2 },
+  { x: 88.5, y: 128.5, s: 243 },
+  { x: 10.8, y: 50.8, s: 398.4 },
+];
+
+/* ── The 2D chip: signals flow ────── */
+function ChipVisual() {
   return (
-    <div className="relative w-[280px] h-[280px]" style={{ perspective: "800px" }}>
-      {/* Outer glow */}
-      <div className="absolute inset-0 rounded-full bg-phosphor/10 blur-[60px]" />
-
-      {/* Rotating chip body */}
+    <div className="relative h-[560px] w-full">
+      {/* ambient glow to keep the column filled, no dead space */}
       <div
-        className="absolute inset-4 animate-float"
+        className="absolute -inset-[12%] pointer-events-none blur-[8px]"
         style={{
-          transformStyle: "preserve-3d",
-          transform: "rotateX(15deg) rotateY(-15deg)",
+          background:
+            "radial-gradient(circle at 50% 46%, rgba(0,232,122,.18), rgba(0,232,122,.05) 45%, transparent 72%)",
         }}
-      >
-        {/* Main chip body */}
-        <div className="absolute inset-0 rounded-xl border-2 border-phosphor/40 bg-pit/80 backdrop-blur-sm shadow-[0_0_40px_rgba(0,232,122,0.15)]">
-          {/* Die (inner square) */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-lg border border-phosphor/60 bg-phosphor/5 shadow-[inset_0_0_20px_rgba(0,232,122,0.1)]">
-            {/* Grid lines inside die */}
-            <div className="absolute inset-2 grid grid-cols-3 grid-rows-3 gap-px opacity-40">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="border border-phosphor/30 rounded-[2px]" />
-              ))}
-            </div>
-            {/* Central glowing dot */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-phosphor animate-pulse_soft shadow-[0_0_12px_rgba(0,232,122,0.8)]" />
-          </div>
+      />
 
-          {/* Pins - Top */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={`t${i}`}
-              className="absolute bg-phosphor/50 rounded-sm"
-              style={{
-                width: "2px", height: "14px",
-                top: "-14px",
-                left: `${20 + i * 10}%`,
-              }}
+      {/* golden-ratio concentric rings */}
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 420 500" preserveAspectRatio="xMidYMid meet">
+        <g>
+          {GR_RINGS.map((r, i) => (
+            <rect
+              key={i}
+              x={r.x}
+              y={r.y}
+              width={r.s}
+              height={r.s}
+              fill="none"
+              stroke="rgba(0,232,122,.15)"
+              strokeWidth={1}
+              className="animate-pulse_glow"
+              style={{ animationDelay: `${i * 0.3}s` }}
             />
           ))}
-          {/* Pins - Bottom */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={`b${i}`}
-              className="absolute bg-phosphor/50 rounded-sm"
-              style={{
-                width: "2px", height: "14px",
-                bottom: "-14px",
-                left: `${20 + i * 10}%`,
-              }}
-            />
-          ))}
-          {/* Pins - Left */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={`l${i}`}
-              className="absolute bg-phosphor/50 rounded-sm"
-              style={{
-                width: "14px", height: "2px",
-                left: "-14px",
-                top: `${20 + i * 10}%`,
-              }}
-            />
-          ))}
-          {/* Pins - Right */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={`r${i}`}
-              className="absolute bg-phosphor/50 rounded-sm"
-              style={{
-                width: "14px", height: "2px",
-                right: "-14px",
-                top: `${20 + i * 10}%`,
-              }}
-            />
-          ))}
+        </g>
+      </svg>
 
-          {/* Corner notch */}
-          <div className="absolute top-2 left-2 w-3 h-3 border-l-2 border-t-2 border-phosphor/30 rounded-tl" />
+      {/* the chip */}
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 420 500" preserveAspectRatio="xMidYMid meet">
+        {TRACES.map((t, i) => (
+          <g key={i}>
+            <path d={t.d} fill="none" stroke="rgba(0,232,122,.22)" strokeWidth={1.4} />
+            <path
+              d={t.d}
+              pathLength={100}
+              fill="none"
+              stroke="#00ff88"
+              strokeWidth={2.6}
+              strokeLinecap="round"
+              strokeDasharray="16 84"
+              className="animate-trace_flow"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+            <circle r={3.2} fill="#00ff88" style={{ filter: "drop-shadow(0 0 4px rgba(0,255,136,.85))" }}>
+              <animateMotion
+                path={t.d}
+                dur={`${1.5 + (i % 3) * 0.35}s`}
+                begin={`${i * 0.14}s`}
+                repeatCount="indefinite"
+              />
+            </circle>
+          </g>
+        ))}
 
-          {/* Gate labels */}
-          <div className="absolute bottom-3 left-3 font-mono text-[8px] text-phosphor/40 tracking-widest">
-            AND · OR · XOR
-          </div>
-          <div className="absolute top-3 right-3 font-mono text-[8px] text-phosphor/40 tracking-widest">
-            FPGA
-          </div>
-        </div>
-      </div>
+        {PADS.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.cx} cy={p.cy} r={5} fill="#0d0e11" stroke="#00e87a" strokeWidth={1.4} />
+            <circle
+              cx={p.cx}
+              cy={p.cy}
+              r={2}
+              fill="#00e87a"
+              className="animate-pulse_glow"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          </g>
+        ))}
 
-      {/* Orbiting data particles */}
-      <div className="absolute inset-0 animate-[spin_12s_linear_infinite]">
-        <div className="absolute top-0 left-1/2 w-1.5 h-1.5 -ml-0.5 rounded-full bg-phosphor shadow-[0_0_6px_rgba(0,232,122,0.8)]" />
-      </div>
-      <div className="absolute inset-0 animate-[spin_8s_linear_infinite_reverse]">
-        <div className="absolute bottom-0 left-1/2 w-1 h-1 -ml-0.5 rounded-full bg-info shadow-[0_0_6px_rgba(77,184,255,0.8)]" />
-      </div>
-      <div className="absolute inset-0 animate-[spin_16s_linear_infinite]">
-        <div className="absolute top-1/2 right-0 w-1 h-1 -mt-0.5 rounded-full bg-warn shadow-[0_0_6px_rgba(255,184,77,0.8)]" />
-      </div>
+        <rect x={140} y={180} width={140} height={140} rx={8} fill="#0d0e11" stroke="rgba(0,232,122,.5)" strokeWidth={1.5} />
+        <g stroke="rgba(0,232,122,.15)" strokeWidth={1}>
+          <line x1={172.8} y1={188} x2={172.8} y2={312} />
+          <line x1={197.6} y1={188} x2={197.6} y2={312} />
+          <line x1={222.4} y1={188} x2={222.4} y2={312} />
+          <line x1={247.2} y1={188} x2={247.2} y2={312} />
+          <line x1={148} y1={212.8} x2={272} y2={212.8} />
+          <line x1={148} y1={237.6} x2={272} y2={237.6} />
+          <line x1={148} y1={262.4} x2={272} y2={262.4} />
+          <line x1={148} y1={287.2} x2={272} y2={287.2} />
+        </g>
+        {DIE_CELLS.map((c, i) => (
+          <rect
+            key={i}
+            x={c.x}
+            y={c.y}
+            width={18}
+            height={18}
+            rx={2}
+            fill="#00e87a"
+            className="animate-cell_pulse"
+            style={{ animationDelay: c.delay }}
+          />
+        ))}
+        <circle cx={210} cy={250} r={6} fill="#00e87a" className="animate-pulse_soft" />
+      </svg>
     </div>
   );
 }
@@ -111,202 +207,192 @@ function AnimatedChip() {
 export default function LandingPage() {
   const { user, loading } = useAuth();
 
-  const navLinks = [
-    { label: "Home", href: "/", active: true },
-    { label: "Sandbox IDE", href: "/sandbox" },
-    { label: "Learning", href: "/learn" },
-    { label: "Academy", href: "/academy" },
-    { label: "Arena", href: "/arena" },
-  ];
-
-  const cards = [
-    {
-      href: "/sandbox",
-      title: "Sandbox IDE",
-      body: "Write, compile, simulate and debug Verilog/SystemVerilog projects in a powerful online IDE.",
-      action: "Launch Sandbox",
-      colorClass: "text-phosphor",
-      bgClass: "bg-phosphor/10",
-      borderHover: "hover:border-phosphor/50",
-      shadowHover: "hover:shadow-[0_0_30px_rgba(0,232,122,0.15)]",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-        </svg>
-      )
-    },
-    {
-      href: "/learn",
-      title: "Learning Path",
-      body: "Follow structured learning paths with hands-on exercises and progress tracking.",
-      action: "Continue Learning",
-      colorClass: "text-info",
-      bgClass: "bg-info/10",
-      borderHover: "hover:border-info/50",
-      shadowHover: "hover:shadow-[0_0_30px_rgba(77,184,255,0.15)]",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-        </svg>
-      )
-    },
-    {
-      href: "/academy",
-      title: "Digital Electronics Academy",
-      body: "Master digital electronics, logic design, sequential circuits, FSMs, and computer architecture.",
-      action: "Explore Academy",
-      colorClass: "text-purple-400",
-      bgClass: "bg-purple-400/10",
-      borderHover: "hover:border-purple-400/50",
-      shadowHover: "hover:shadow-[0_0_30px_rgba(168,85,247,0.15)]",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" />
-        </svg>
-      )
-    },
-    {
-      href: "/arena",
-      title: "HDL Arena",
-      body: "Solve real-world RTL and verification challenges. Practice, compete and improve your skills.",
-      action: "Enter Arena",
-      colorClass: "text-warn",
-      bgClass: "bg-warn/10",
-      borderHover: "hover:border-warn/50",
-      shadowHover: "hover:shadow-[0_0_30px_rgba(255,184,77,0.15)]",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-        </svg>
-      )
-    }
-  ];
-
   if (loading) {
     return (
       <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
-        Loading...
+        <span className="text-ghost text-sm">
+          <span className="text-phosphor">►</span> booting bitflow
+          <span className="animate-blink">_</span>
+        </span>
       </div>
     );
   }
 
   return (
     <main className="min-h-screen bg-void text-bright font-mono overflow-x-hidden selection:bg-phosphor/30">
-      {/* Background glows */}
-      <div className="absolute top-0 left-1/4 w-80 h-80 bg-phosphor/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-20 right-0 w-96 h-96 bg-phosphor/8 rounded-full blur-[150px] pointer-events-none" />
+      {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
+      <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
+        <Link href="/" className="justify-self-start font-display font-bold text-lg">
+          BitFlow
+        </Link>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-3 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <div className="flex items-center gap-10">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-            <span className="font-display font-bold text-lg">BitFlow</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-6 text-[11px] font-semibold tracking-wider uppercase">
-            {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className={link.active
-                  ? "text-phosphor border-b-2 border-phosphor pb-0.5"
-                  : "text-ghost hover:text-bright transition-colors pb-0.5"}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
+        <div className="hidden md:flex items-center gap-8 text-[13px] text-ghost justify-self-center">
+          {NAV_LINKS.map((link) => (
+            <Link key={link.label} href={link.href} className="hover:text-bright transition-colors">
+              {link.label}
+            </Link>
+          ))}
         </div>
-        <div className="flex items-center gap-5">
-          <button className="text-ghost hover:text-bright transition-colors">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          </button>
-          <button className="text-ghost hover:text-bright transition-colors relative">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-phosphor rounded-full" />
-          </button>
+
+        <div className="flex items-center gap-5 justify-self-end">
           {user ? (
             <div className="flex items-center gap-2 cursor-pointer group">
               <div className="w-7 h-7 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-xs">
                 {user.username.charAt(0).toUpperCase()}
               </div>
-              <span className="text-xs text-pale group-hover:text-bright transition-colors">
-                {user.username}
-              </span>
+              <span className="text-xs text-pale group-hover:text-bright transition-colors">{user.username}</span>
             </div>
           ) : (
-            <Link href="/login" className="px-4 py-1.5 rounded-full bg-phosphor/10 text-phosphor hover:bg-phosphor/20 border border-phosphor/30 transition-colors text-[11px] font-bold tracking-wider">
-              SIGN IN
-            </Link>
+            <>
+              <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
+                Sign In
+              </Link>
+              <Link
+                href="/login"
+                className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
+              >
+                Let&apos;s Go →
+              </Link>
+            </>
           )}
         </div>
       </nav>
 
-      {/* Hero Section — compact so cards are visible */}
-      <section className="relative z-10 max-w-7xl mx-auto px-6 pt-10 pb-8 flex flex-col lg:flex-row items-center justify-between gap-8">
-        {/* Left text */}
-        <div className="flex-1 max-w-xl">
-          {user && (
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-phosphor/10 border border-phosphor/20 text-phosphor text-[9px] font-bold tracking-[0.2em] mb-5 uppercase">
-              WELCOME BACK, {user.username} 👋
-            </div>
-          )}
-          <h1 className="font-display text-3xl md:text-4xl font-bold leading-[1.15] tracking-tight mb-4">
-            Everything you need to{" "}
-            <span className="text-phosphor">Design. Learn. Build.</span>
+      {/* Hero — golden-ratio split (61.8% text / 38.2% visual) */}
+      <section className="max-w-[1400px] mx-auto px-6 md:px-10 pt-16 pb-12 grid grid-cols-1 lg:grid-cols-[1.618fr_1fr] gap-10 items-center animate-fade_up">
+        <div>
+          <span className="inline-block px-3.5 py-1.5 border border-phosphor/40 rounded text-[11px] tracking-[0.18em] text-phosphor uppercase mb-6">
+            HDL Engineering Platform
+          </span>
+          <h1 className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
+            Design. <span className="text-phosphor">Learn.</span>
+            <br />
+            Build.
           </h1>
-          <p className="text-sm text-ghost leading-relaxed mb-6 max-w-md">
-            The all-in-one platform for RTL design, verification, and digital electronics learning.
+          <p className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
+            The all-in-one platform for RTL design, verification, and digital electronics learning — write,
+            simulate, and debug Verilog and SystemVerilog right in your browser.
           </p>
-          <Link
-            href="/sandbox"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-phosphor text-void text-xs font-bold tracking-wider uppercase hover:bg-phosphor-glow transition-all hover:scale-[1.03] shadow-[0_0_18px_rgba(0,232,122,0.25)]"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-            New Project
-          </Link>
+          <div className="flex flex-wrap gap-3.5 mb-10">
+            <Link
+              href="/sandbox"
+              className="px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors hover:-translate-y-0.5"
+            >
+              Let&apos;s Get Started →
+            </Link>
+            <Link
+              href="/arena"
+              className="px-7 py-3.5 rounded-lg border border-rim text-ghost text-[13px] font-semibold hover:border-muted hover:text-bright transition-colors"
+            >
+              Explore Problems
+            </Link>
+          </div>
+          <div className="flex gap-14 border-t border-rim pt-6 max-w-md">
+            {STATS.map((s) => (
+              <div key={s.label}>
+                <div className="font-serif text-2xl text-bright">{s.value}</div>
+                <div className="text-[10px] text-dim uppercase tracking-wider mt-1">{s.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Right — animated CSS chip */}
-        <div className="flex-shrink-0">
-          <AnimatedChip />
-        </div>
+        <ChipVisual />
       </section>
 
-      {/* Feature Cards */}
-      <section className="relative z-10 max-w-7xl mx-auto px-6 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {cards.map((card, i) => (
-            <Link
-              key={i}
-              href={card.href}
-              className={`group flex flex-col justify-between p-5 rounded-2xl bg-surface/40 backdrop-blur-xl border border-rim transition-all duration-300 ${card.borderHover} ${card.shadowHover} hover:-translate-y-1 min-h-[220px] relative overflow-hidden`}
-            >
-              <div>
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-4 ${card.bgClass} ${card.colorClass} border border-current/20`}>
-                  {card.icon}
-                </div>
-                <h3 className="text-sm font-bold text-bright mb-2">{card.title}</h3>
-                <p className="text-[11px] text-ghost leading-relaxed">{card.body}</p>
+      {/* Why BitFlow */}
+      <section className="max-w-[1400px] mx-auto px-6 md:px-10 py-20">
+        <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Why BitFlow</div>
+        <h2 className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
+          The Ultimate
+          <br />
+          HDL Workbench.
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {WHY_CARDS.map((c) => (
+            <div key={c.title} className="border border-rim rounded-xl p-6 bg-pit">
+              <div className="w-9 h-9 border border-phosphor/35 rounded-lg flex items-center justify-center text-phosphor mb-5">
+                {c.icon}
               </div>
-              <div className={`mt-4 flex items-center gap-1.5 text-[11px] font-bold ${card.colorClass} opacity-80 group-hover:opacity-100 transition-opacity`}>
-                {card.action}
-                <svg className="w-3 h-3 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
+              <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
+                <span className="font-serif text-lg text-bright">{c.title}</span>
+                <span className="text-[10px] uppercase tracking-wide text-phosphor border border-phosphor/30 rounded-full px-2.5 py-0.5">
+                  {c.badge}
+                </span>
               </div>
-            </Link>
+              <p className="text-[13px] text-ghost leading-relaxed">{c.body}</p>
+            </div>
           ))}
         </div>
+      </section>
 
-        {/* Carousel dots */}
-        <div className="flex items-center justify-center gap-2 mt-8">
-          <div className="w-1.5 h-1.5 rounded-full bg-phosphor" />
-          <div className="w-1.5 h-1.5 rounded-full bg-rim" />
-          <div className="w-1.5 h-1.5 rounded-full bg-rim" />
-          <div className="w-1.5 h-1.5 rounded-full bg-rim" />
+      {/* Categories — hover pop animation */}
+      <section className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
+        <div className="text-center max-w-2xl mx-auto mb-10">
+          <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Built for HDL learners</div>
+          <h2 className="font-serif text-2xl md:text-3xl text-pale">
+            Everything you need to go from Verilog to verified design.
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-rim border border-rim rounded-xl overflow-hidden">
+          {CATEGORIES.map((cat) => (
+            <div
+              key={cat.title}
+              className="group relative bg-void hover:bg-pit p-6 cursor-pointer
+                         transition-[background-color,transform,box-shadow] duration-300
+                         ease-[cubic-bezier(0.34,1.56,0.64,1)]
+                         hover:scale-[1.07] hover:-translate-y-1.5 hover:z-10
+                         hover:shadow-[0_14px_26px_rgba(0,0,0,.35),0_0_0_1px_rgba(0,232,122,.4),0_0_22px_rgba(0,232,122,.18)]"
+            >
+              <div className="font-serif text-base text-bright mb-1.5 group-hover:text-phosphor transition-colors">
+                {cat.title}
+              </div>
+              <div className="text-[11px] text-dim group-hover:text-pale transition-colors">{cat.tags}</div>
+            </div>
+          ))}
         </div>
       </section>
+
+      {/* Final CTA */}
+      <section className="max-w-xl mx-auto text-center px-6 pb-28 pt-10">
+        <h2 className="font-serif text-3xl md:text-4xl mb-4">
+          Ready to compile
+          <br />
+          your first design?
+        </h2>
+        <p className="text-sm text-ghost leading-relaxed mb-8">
+          Join BitFlow and start writing Verilog in your browser — no installs, no waiting.
+        </p>
+        <Link
+          href="/login"
+          className="inline-block px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
+        >
+          Let&apos;s Get Started — It&apos;s Free →
+        </Link>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-rim/50">
+        <div className="max-w-[1400px] mx-auto px-6 md:px-10 py-6 flex flex-wrap items-center justify-between gap-4">
+          <span className="font-serif text-base text-dim">BitFlow</span>
+          <span className="text-[11px] tracking-wider text-dim uppercase">
+            Designed by <b className="text-phosphor">AKD</b>
+          </span>
+          <div className="flex gap-6 text-[11px] tracking-wide text-dim uppercase">
+            <Link href="/about" className="hover:text-bright transition-colors">
+              About Founders
+            </Link>
+            <a
+              href="#"
+              className="hover:text-bright transition-colors"
+              title="Add BitFlow company LinkedIn URL here"
+            >
+              LinkedIn
+            </a>
+          </div>
+        </div>
+        <div className="text-center text-[11px] text-muted pb-6">© 2026 BitFlow. All rights reserved.</div>
+      </footer>
     </main>
   );
 }
