@@ -38,8 +38,26 @@ export default function AboutPage() {
           
           <h2 className="font-display text-xl text-bright mt-10 mb-4">The Founders</h2>
           <p>
-            BitFlow was designed and built by <strong>AKD</strong>. Our mission is to democratize digital electronics and hardware description languages by bringing powerful, modern web technologies to the traditionally complex world of RTL design.
+            BitFlow was designed and built by <strong>NAVIEL Advanced Engineering &amp; Technology</strong>. Our mission is to democratize digital electronics and hardware description languages by bringing powerful, modern web technologies to the traditionally complex world of RTL design.
           </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+            <div className="flex flex-col items-center p-8 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
+              <div className="w-40 h-40 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
+                <img src="/Arun Kasi Dommeti.jpeg" alt="Arun Kasi Dommeti" className="w-full h-full object-cover" />
+              </div>
+              <h3 className="font-serif text-xl font-bold text-bright mb-1">Arun Kasi Dommeti</h3>
+              <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
+            </div>
+            
+            <div className="flex flex-col items-center p-8 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
+              <div className="w-40 h-40 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
+                <img src="/Abhilash Joyeal Uppalaguptha.jpeg" alt="Abhilash Joyeal Uppalaguptha" className="w-full h-full object-cover" />
+              </div>
+              <h3 className="font-serif text-xl font-bold text-bright mb-1 text-center">Abhilash Joyeal Uppalaguptha</h3>
+              <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
+            </div>
+          </div>
 
           <h2 className="font-display text-xl text-bright mt-10 mb-4">Our Vision</h2>
           <p>

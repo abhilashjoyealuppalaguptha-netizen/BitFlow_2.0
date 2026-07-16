@@ -430,7 +430,7 @@ export default function LandingPage() {
           <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
 
           <div className="text-[11px] tracking-[0.14em] text-bright uppercase">
-            Designed by <b className="text-phosphor">AKD</b>
+            Designed by <a href="https://www.linkedin.com/company/naviel-corporation/?viewAsMember=true" target="_blank" rel="noopener noreferrer" className="text-phosphor hover:text-bright transition-colors font-bold">NAVIEL Advanced Engineering &amp; Technology</a>
           </div>
         </div>
       </footer>
