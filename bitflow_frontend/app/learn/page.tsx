@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import AuthGate from "@/components/AuthGate";
 import ScrollUnlock from "../../components/ScrollUnlock";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 
@@ -420,6 +421,14 @@ function LevelSection({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LearnPage() {
+  return (
+    <AuthGate>
+      <LearnContent />
+    </AuthGate>
+  );
+}
+
+function LearnContent() {
   const [questions, setQuestions] = useState<Problem[]>([]);
   const [progress, setProgress] = useState<ProgressRecord | null>(null);
   const [loading, setLoading] = useState(true);

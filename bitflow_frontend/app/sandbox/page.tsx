@@ -79,6 +79,7 @@ import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
 import ExportCard                     from "@/components/ExportCard";
+import AuthGate                       from "@/components/AuthGate";
 import { useSimulation }              from "@/hooks/useSimulation";
 import { useSplitter }                from "@/hooks/useSplitter";
 import { useLocalStorage }            from "@/hooks/useLocalStorage";
@@ -273,6 +274,14 @@ function EditorTab({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Page() {
+  return (
+    <AuthGate>
+      <SandboxContent />
+    </AuthGate>
+  );
+}
+
+function SandboxContent() {
   // ── Simulation state — hook completely unchanged ──────────────────────────
   const {
     designCode,

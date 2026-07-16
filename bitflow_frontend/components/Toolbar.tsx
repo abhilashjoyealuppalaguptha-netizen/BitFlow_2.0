@@ -89,7 +89,7 @@ export default function Toolbar({
       {/* ── Left: branding + nav ───────────────────────────────────────── */}
       <div className="flex items-center gap-4">
         {/* BitFlow mark */}
-        <div className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <img
             src="/bitflow_logo_2.png"
             alt="BitFlow"
@@ -103,7 +103,7 @@ export default function Toolbar({
               Sandbox IDE
             </span>
           </div>
-        </div>
+        </Link>
 
         {/* ── Nav links ─────────────────────────────────────────────────── */}
         <nav className="hidden sm:flex items-center gap-1">
