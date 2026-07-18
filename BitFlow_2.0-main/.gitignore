@@ -1,8 +1,0 @@
-node_modules
-.next
-.env.local
-.git-backup
-*.tsbuildinfo
-dist
-build
-*.log

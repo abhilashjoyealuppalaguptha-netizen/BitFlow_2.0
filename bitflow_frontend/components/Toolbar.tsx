@@ -60,7 +60,7 @@ function RunningIndicator() {
 function DurationChip({ ms }: { ms: number }) {
   const label = ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
   return (
-    <span className="font-mono text-[11px] text-ghost px-2 py-0.5 rounded bg-surface border border-rim">
+    <span className="font-mono text-[11px] text-ghost px-2 py-0.5 rounded-lg bg-pit/50 backdrop-blur-sm border border-rim/60">
       {label}
     </span>
   );
@@ -85,11 +85,11 @@ export default function Toolbar({
   const { user, logout } = useAuth();
 
   return (
-    <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-surface border-b border-rim z-10">
+    <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-void/70 backdrop-blur-xl border-b border-rim/50 z-10">
       {/* ── Left: branding + nav ───────────────────────────────────────── */}
       <div className="flex items-center gap-4">
         {/* BitFlow mark */}
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-3">
           <img
             src="/bitflow_logo_2.png"
             alt="BitFlow"
@@ -103,12 +103,13 @@ export default function Toolbar({
               Sandbox IDE
             </span>
           </div>
-        </Link>
+        </div>
 
         {/* ── Nav links ─────────────────────────────────────────────────── */}
         <nav className="hidden sm:flex items-center gap-1">
           {[
             ...(pathname.startsWith("/sandbox") ? [] : [{ href: "/sandbox", label: "Sandbox" }]),
+            { href: "/dashboard", label: "Dashboard" },
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
             { href: "/academy", label: "Academy" },
@@ -120,10 +121,10 @@ export default function Toolbar({
                 key={href}
                 href={href}
                 className={[
-                  "px-2.5 py-1 rounded font-mono text-[11px] tracking-wide transition-colors duration-100",
+                  "px-2.5 py-1 rounded-lg font-mono text-[11px] tracking-wide transition-colors duration-100",
                   active
-                    ? "bg-phosphor/10 text-phosphor border border-phosphor/30"
-                    : "text-ghost hover:text-pale hover:bg-surface",
+                    ? "bg-phosphor/10 backdrop-blur-sm text-phosphor border border-phosphor/30"
+                    : "text-ghost hover:text-pale hover:bg-pit/40",
                 ].join(" ")}
               >
                 {label}
@@ -157,12 +158,12 @@ export default function Toolbar({
               disabled={isExporting}
               title="Download snapshot PNG (LinkedIn/Twitter)"
               className={[
-                "flex items-center gap-1 px-2 py-1 rounded",
+                "flex items-center gap-1 px-2 py-1 rounded-lg",
                 "font-mono text-[9px] tracking-wider",
-                "border transition-all duration-100 select-none",
+                "border backdrop-blur-sm transition-all duration-100 select-none",
                 isExporting
                   ? "border-rim text-dim cursor-not-allowed"
-                  : "border-rim/60 text-dim hover:border-info/40 hover:text-info/80 hover:bg-info/5",
+                  : "border-rim/60 bg-pit/30 text-dim hover:border-info/40 hover:text-info/80 hover:bg-info/10",
               ].join(" ")}
             >
               <svg viewBox="0 0 10 10" className="w-2 h-2 fill-current">
@@ -179,12 +180,12 @@ export default function Toolbar({
               disabled={isExporting}
               title="Download project ZIP (design.v + tb.v + wave.vcd)"
               className={[
-                "flex items-center gap-1 px-2 py-1 rounded",
+                "flex items-center gap-1 px-2 py-1 rounded-lg",
                 "font-mono text-[9px] tracking-wider",
-                "border transition-all duration-100 select-none",
+                "border backdrop-blur-sm transition-all duration-100 select-none",
                 isExporting
                   ? "border-rim text-dim cursor-not-allowed"
-                  : "border-rim/60 text-dim hover:border-phosphor/40 hover:text-phosphor/70 hover:bg-phosphor/5",
+                  : "border-rim/60 bg-pit/30 text-dim hover:border-phosphor/40 hover:text-phosphor/70 hover:bg-phosphor/10",
               ].join(" ")}
             >
               <svg viewBox="0 0 10 10" className="w-2 h-2" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -205,12 +206,12 @@ export default function Toolbar({
           title={isAIOpen ? "Close AI assistant" : "Open AI assistant (HDL helper)"}
           aria-label={isAIOpen ? "Close AI assistant" : "Open AI assistant"}
           className={[
-            "flex items-center gap-1.5 px-3 py-1.5 rounded",
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg",
             "font-mono text-[11px] font-semibold tracking-wider",
-            "border transition-all duration-150 select-none",
+            "border backdrop-blur-sm transition-all duration-150 select-none",
             isAIOpen
               ? "border-info/60 bg-info/15 text-info"
-              : "border-rim/60 text-ghost hover:border-info/40 hover:text-info/70 hover:bg-info/5",
+              : "border-rim/60 bg-pit/30 text-ghost hover:border-info/40 hover:text-info/70 hover:bg-info/10",
           ].join(" ")}
         >
           {/* Spark icon */}
@@ -226,20 +227,18 @@ export default function Toolbar({
         {/* User profile info & logout */}
         {user && (
           <div className="flex items-center gap-2 px-1">
-            <Link href="/profile" className="flex items-center gap-2 group cursor-pointer hover:bg-surface py-0.5 px-1 rounded transition-colors">
-              <span className="text-[10px] text-ghost/85 font-mono group-hover:text-pale">{user.username}</span>
-              <span className={`text-[8px] font-mono border px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                user.role === "ADMIN" 
-                  ? "border-info/30 bg-info/15 text-info font-bold" 
-                  : "border-phosphor/30 bg-phosphor/10 text-phosphor"
-              }`}>
-                {user.role}
-              </span>
-            </Link>
+            <span className="text-[10px] text-ghost/85 font-mono">{user.username}</span>
+            <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+              user.role === "ADMIN" 
+                ? "border-info/30 bg-info/15 text-info font-bold" 
+                : "border-phosphor/30 bg-phosphor/10 text-phosphor"
+            }`}>
+              {user.role}
+            </span>
             <button
               onClick={() => logout()}
               title="Logout session"
-              className="px-2 py-0.5 rounded border border-rim/60 text-dim hover:text-danger hover:border-danger/30 text-[9px] font-mono transition-colors"
+              className="px-2 py-0.5 rounded-lg border border-rim/60 bg-pit/30 backdrop-blur-sm text-dim hover:text-danger hover:border-danger/30 text-[9px] font-mono transition-colors"
             >
               Logout
             </button>
@@ -256,16 +255,16 @@ export default function Toolbar({
           aria-label={isRunning ? "Simulation running…" : "Run simulation (Ctrl+Enter)"}
           title={isRunning ? undefined : "Run simulation (Ctrl+Enter)"}
           className={[
-            "flex items-center gap-2 px-4 py-1.5 rounded",
+            "flex items-center gap-2 px-4 py-1.5 rounded-lg",
             "font-mono text-[12px] font-semibold tracking-widest uppercase",
-            "border transition-all duration-150 select-none",
+            "border backdrop-blur-sm transition-all duration-150 select-none",
             isRunning
               ? "border-phosphor/30 bg-phosphor/5 text-phosphor/60 cursor-not-allowed"
               : [
                   "border-phosphor/60 bg-phosphor/10 text-phosphor",
                   "hover:bg-phosphor/20 hover:border-phosphor",
                   "active:scale-[0.97]",
-                  "hover:shadow-[0_0_12px_0_rgba(0,232,122,0.25)]",
+                  "hover:shadow-[0_0_16px_0_rgba(0,232,122,0.3)]",
                 ].join(" "),
           ].join(" ")}
         >

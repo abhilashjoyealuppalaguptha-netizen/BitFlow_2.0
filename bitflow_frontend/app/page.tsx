@@ -1,5 +1,7 @@
-"use client";
+﻿"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../hooks/useAuth";
 
@@ -239,8 +241,15 @@ const SOCIAL_LINKS = [
 
 export default function LandingPage() {
   const { user, loading } = useAuth();
+  const router = useRouter();
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
+
+  if (loading || user) {
     return (
       <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
         <span className="text-ghost text-sm">
@@ -255,9 +264,8 @@ export default function LandingPage() {
     <main className="min-h-screen bg-void text-bright font-mono overflow-x-hidden selection:bg-phosphor/30">
       {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
       <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="justify-self-start flex items-center gap-2">
-          <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-          <span className="font-display font-bold text-lg">BitFlow</span>
+        <Link href="/" className="justify-self-start font-display font-bold text-lg">
+          BitFlow
         </Link>
 
         <div className="hidden md:flex items-center gap-8 text-[13px] text-ghost justify-self-center">
@@ -431,7 +439,7 @@ export default function LandingPage() {
           <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
 
           <div className="text-[11px] tracking-[0.14em] text-bright uppercase">
-            Designed by <a href="https://www.linkedin.com/company/naviel-corporation/?viewAsMember=true" target="_blank" rel="noopener noreferrer" className="text-phosphor hover:text-bright transition-colors font-bold">NAVIEL Advanced Engineering &amp; Technology</a>
+            Designed by <b className="text-phosphor">AKD</b>
           </div>
         </div>
       </footer>

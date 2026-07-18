@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import AuthGate from "@/components/AuthGate";
 import ScrollUnlock from "../../components/ScrollUnlock";
+import AuthGate from "../../components/AuthGate";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,17 +196,24 @@ function ProblemCard({
     advanced:     "text-warn border-warn/30",
     arena:        "text-danger border-danger/30",
   };
+  const diffGlow: Record<string, string> = {
+    beginner:     "hover:shadow-[0_8px_20px_rgba(0,0,0,.3),0_0_16px_rgba(0,232,122,.15)] hover:border-phosphor/30",
+    intermediate: "hover:shadow-[0_8px_20px_rgba(0,0,0,.3),0_0_16px_rgba(77,184,255,.15)] hover:border-info/30",
+    advanced:     "hover:shadow-[0_8px_20px_rgba(0,0,0,.3),0_0_16px_rgba(255,184,77,.15)] hover:border-warn/30",
+    arena:        "hover:shadow-[0_8px_20px_rgba(0,0,0,.3),0_0_16px_rgba(255,79,79,.15)] hover:border-danger/30",
+  };
 
   const solved = progress?.problems[problem.id]?.solved ?? false;
 
   return (
     <Link
       href={`/problems/${problem.slug}`}
-      className="group flex items-center gap-3 px-3 py-2.5 rounded border border-rim/40 bg-surface/30 hover:border-rim hover:bg-surface/60 transition-all duration-150"
+      className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg border border-rim/50 bg-pit/30 backdrop-blur-sm
+                  transition-all duration-200 hover:bg-pit/60 hover:-translate-y-0.5 ${diffGlow[problem.difficulty] ?? "hover:border-muted"}`}
     >
       {/* Solved checkmark or order number */}
       <span
-        className={`shrink-0 w-5 h-5 flex items-center justify-center rounded font-mono text-[8px] border transition-colors ${
+        className={`shrink-0 w-5 h-5 flex items-center justify-center rounded font-mono text-[9px] border transition-colors ${
           solved
             ? "bg-phosphor/20 text-phosphor border-phosphor/40 font-bold"
             : "text-dim border-rim/40"
@@ -221,17 +228,17 @@ function ProblemCard({
       </span>
 
       {/* Category pill */}
-      <span className="shrink-0 hidden sm:block font-mono text-[8px] text-dim/60 bg-surface border border-rim/30 px-1.5 py-0.5 rounded">
+      <span className="shrink-0 hidden sm:block font-mono text-[9px] text-dim bg-pit border border-rim/40 px-1.5 py-0.5 rounded">
         {problem.category.replace("_", " ")}
       </span>
 
       {/* Difficulty */}
-      <span className={`shrink-0 font-mono text-[8px] border px-1.5 py-0.5 rounded uppercase tracking-wider ${diffColours[problem.difficulty] ?? "text-ghost border-rim"}`}>
+      <span className={`shrink-0 font-mono text-[9px] border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${diffColours[problem.difficulty] ?? "text-ghost border-rim"}`}>
         {problem.difficulty}
       </span>
 
       {/* XP */}
-      <span className="shrink-0 font-mono text-[8px] text-dim">
+      <span className="shrink-0 font-mono text-[9px] text-dim">
         +{problem.xpReward} XP
       </span>
 
@@ -256,13 +263,13 @@ function ModuleCard({
 }) {
   return (
     <div
-      className={`rounded border overflow-hidden transition-all duration-200 ${
-        locked ? "border-rim/30 opacity-50" : "border-rim/60"
+      className={`rounded-xl border border-t-white/10 overflow-hidden backdrop-blur-md transition-all duration-200 ${
+        locked ? "border-rim/30 bg-pit/20 opacity-50" : "border-rim/60 bg-pit/30"
       }`}
     >
       {/* Module header */}
       <div
-        className="flex items-center gap-3 px-4 py-3 bg-surface/40 border-b border-rim/40"
+        className="flex items-center gap-3 px-4 py-3 bg-pit/40 border-b border-rim/40"
         style={locked ? {} : { borderLeftWidth: 2, borderLeftColor: accent }}
       >
         <span className="text-lg shrink-0">{mod.icon || "⚙"}</span>
@@ -272,12 +279,12 @@ function ModuleCard({
               {mod.title}
             </span>
             {locked && (
-              <span className="font-mono text-[8px] text-dim border border-rim/40 px-1.5 py-0.5 rounded uppercase">
+              <span className="font-mono text-[9px] text-dim border border-rim/40 px-1.5 py-0.5 rounded-full uppercase">
                 🔒 locked
               </span>
             )}
           </div>
-          <p className="font-mono text-[9px] text-dim/70 mt-0.5 truncate">
+          <p className="font-mono text-[10px] text-dim mt-0.5 truncate">
             {mod.description}
           </p>
         </div>
@@ -288,7 +295,7 @@ function ModuleCard({
 
       {/* Problems list */}
       {!locked && mod.problems.length > 0 && (
-        <div className="px-3 py-2 space-y-1.5 bg-pit/50">
+        <div className="px-3 py-2 space-y-1.5 bg-void/40">
           {mod.problems.map((p) => (
             <ProblemCard key={p.id} problem={p} progress={progress} />
           ))}
@@ -296,16 +303,16 @@ function ModuleCard({
       )}
 
       {!locked && mod.problems.length === 0 && (
-        <div className="px-4 py-3 bg-pit/30">
-          <p className="font-mono text-[9px] text-dim/50">
+        <div className="px-4 py-3 bg-void/30">
+          <p className="font-mono text-[10px] text-dim">
             No questions in this module yet.
           </p>
         </div>
       )}
 
       {locked && (
-        <div className="px-4 py-3 bg-pit/30">
-          <p className="font-mono text-[9px] text-dim/50">
+        <div className="px-4 py-3 bg-void/30">
+          <p className="font-mono text-[10px] text-dim">
             Complete prerequisite modules to unlock.
           </p>
         </div>
@@ -343,11 +350,11 @@ function LevelSection({
 
   return (
     <section
-      className="rounded-lg border border-rim/60 overflow-hidden"
+      className="rounded-xl border border-rim/60 border-t-white/10 overflow-hidden backdrop-blur-md"
       style={{ boxShadow: `0 0 40px 0 ${LEVEL_CONFIG[level.difficulty]?.glow ?? "transparent"}` }}
     >
       {/* Level header */}
-      <div className="px-6 py-5 bg-surface/60 border-b border-rim/60">
+      <div className="px-6 py-5 bg-pit/40 border-b border-rim/60">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -355,7 +362,7 @@ function LevelSection({
                 {level.title}
               </h2>
               {level.xpToUnlock > 0 && (
-                <span className={`font-mono text-[8px] px-2 py-0.5 rounded border uppercase tracking-wider ${cfg.badge}`}>
+                <span className={`font-mono text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-wider ${cfg.badge}`}>
                   {level.xpToUnlock} XP to unlock
                 </span>
               )}
@@ -421,14 +428,6 @@ function LevelSection({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LearnPage() {
-  return (
-    <AuthGate>
-      <LearnContent />
-    </AuthGate>
-  );
-}
-
-function LearnContent() {
   const [questions, setQuestions] = useState<Problem[]>([]);
   const [progress, setProgress] = useState<ProgressRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -502,11 +501,12 @@ const advancedQuestions = questions.filter(
   ];
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-void text-bright flex flex-col">
       <ScrollUnlock />
       
       {/* Nav */}
-      <header className="sticky top-0 z-10 h-12 flex items-center justify-between px-6 bg-surface/90 border-b border-rim backdrop-blur-sm">
+      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2 group">
             <img
@@ -520,52 +520,42 @@ const advancedQuestions = questions.filter(
           <span className="font-mono text-[11px] text-ghost">Learning Path</span>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           {progress && (
-            <div className="text-[10px] text-phosphor bg-phosphor/10 border border-phosphor/20 rounded px-2 py-0.5">
+            <div className="text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 backdrop-blur-md rounded-full px-3 py-1">
               🏆 {progress.totalXp} XP
             </div>
           )}
-          <Link
-            href="/"
-            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
-          >
-            Home
+          <Link href="/dashboard" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
+            Dashboard
           </Link>
-          <Link
-            href="/sandbox"
-            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
-          >
+          <Link href="/sandbox" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
             Sandbox
           </Link>
-          <Link
-            href="/arena"
-            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
-          >
+          <Link href="/arena" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
             Arena
           </Link>
-          <Link
-            href="/academy"
-            className="font-mono text-[10px] text-dim hover:text-ghost transition-colors"
-          >
+          <Link href="/academy" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
             Academy
           </Link>
         </div>
       </header>
 
       {/* Hero */}
-      <div className="px-6 py-10 border-b border-rim/30 bg-gradient-to-b from-surface/20 to-transparent">
-        <div className="max-w-3xl">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="font-mono text-[9px] text-phosphor/60 uppercase tracking-widest border border-phosphor/20 px-2 py-0.5 rounded">
-              Problem Arena
-            </span>
-          </div>
-          <h1 className="font-display text-[28px] font-bold text-bright leading-tight mb-3">
+      <div className="relative px-6 py-12 border-b border-rim/30">
+        <div
+          className="absolute inset-0 pointer-events-none opacity-60"
+          style={{ background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(0,232,122,.06), transparent 60%)" }}
+        />
+        <div className="relative max-w-3xl">
+          <span className="inline-block font-mono text-[10px] text-phosphor uppercase tracking-widest border border-phosphor/25 bg-phosphor/10 backdrop-blur-md px-3 py-1 rounded-full mb-4">
+            Problem Arena
+          </span>
+          <h1 className="font-serif text-[32px] text-bright leading-tight mb-3">
             Master Verilog,<br />
             <span className="text-phosphor">one circuit at a time.</span>
           </h1>
-          <p className="font-mono text-[11px] text-ghost/80 leading-relaxed max-w-lg">
+          <p className="font-mono text-[12px] text-ghost leading-relaxed max-w-lg">
             Structured learning path from basic gates to RTL design.
             Every problem runs real simulation in Icarus Verilog.
             Build. Simulate. Understand.
@@ -591,12 +581,13 @@ const advancedQuestions = questions.filter(
 
       {/* Footer */}
       <footer className="px-6 py-6 border-t border-rim/30 text-center mt-auto">
-        <p className="font-mono text-[9px] text-dim/40">
+        <p className="font-mono text-[10px] text-dim">
           BitFlow · Verilog Sandbox + Problem Arena
           <span className="mx-2">·</span>
           Icarus Verilog · GTKWave-style waveforms
         </p>
       </footer>
     </div>
+    </AuthGate>
   );
 }

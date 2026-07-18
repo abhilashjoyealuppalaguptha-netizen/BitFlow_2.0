@@ -129,7 +129,7 @@ function BackgroundParticles() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     let raf = 0;
@@ -460,6 +460,8 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [secretPassword, setSecretPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -489,7 +491,7 @@ export default function LoginPage() {
           }
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/");
+            router.push(role === "ADMIN" ? "/admin" : "/dashboard");
           }, 500);
         }
       } else {
@@ -499,7 +501,7 @@ export default function LoginPage() {
           triggerError();
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/");
+            router.push(role === "ADMIN" ? "/admin" : "/dashboard");
           }, 500);
         }
       }
@@ -519,10 +521,22 @@ export default function LoginPage() {
     ? isSignUp
       ? "Ready to register!"
       : "Ready to authorize!"
-    : "Hey Hello!!";
+    : "Hey Hello!! I'm Bitzy 👋";
 
   return (
     <div className="relative min-h-screen bg-void overflow-hidden flex flex-col items-center justify-center px-6 py-12 font-mono text-bright">
+      <style>{`
+        .bf-input:-webkit-autofill,
+        .bf-input:-webkit-autofill:hover,
+        .bf-input:-webkit-autofill:focus,
+        .bf-input:-webkit-autofill:active {
+          -webkit-text-fill-color: #e8eaf6;
+          -webkit-box-shadow: 0 0 0px 1000px #141a15 inset;
+          box-shadow: 0 0 0px 1000px #141a15 inset;
+          transition: background-color 9999s ease-in-out 0s;
+          caret-color: #e8eaf6;
+        }
+      `}</style>
       <PageBackground />
       <BackgroundParticles />
 
@@ -594,37 +608,77 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. system_operator"
-                className="w-full bg-shaft border border-rim rounded-lg px-3.5 py-2.5 text-[13px] text-bright placeholder-dim/50 focus:outline-none focus:border-phosphor transition-colors"
+                className="bf-input w-full bg-[#141a15] border border-rim rounded-lg px-3.5 py-2.5 text-[13px] text-bright placeholder-dim/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-phosphor transition-colors"
               />
             </div>
 
             <div>
               <label className="block text-[11px] text-pale mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onFocus={() => setShy(true)}
-                onBlur={() => setShy(false)}
-                placeholder="••••••••"
-                className="w-full bg-shaft border border-rim rounded-lg px-3.5 py-2.5 text-[13px] text-bright placeholder-dim/50 focus:outline-none focus:border-phosphor transition-colors"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onFocus={() => setShy(true)}
+                  onBlur={() => setShy(false)}
+                  placeholder="••••••••"
+                  className="bf-input w-full bg-[#141a15] border border-rim rounded-lg px-3.5 py-2.5 pr-11 text-[13px] text-bright placeholder-dim/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-phosphor transition-colors"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ghost hover:text-phosphor transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.88 5.09A9.77 9.77 0 0112 5c5.05 0 8.7 3.55 10 7-.42 1.13-1.05 2.19-1.86 3.12M6.53 6.53C4.5 7.86 2.94 9.77 2 12c1.3 3.45 4.95 7 10 7 1.4 0 2.7-.27 3.86-.75" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2 12c1.3-3.45 4.95-7 10-7s8.7 3.55 10 7c-1.3 3.45-4.95 7-10 7s-8.7-3.55-10-7z" />
+                      <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {role === "ADMIN" && isSignUp && (
               <div>
                 <label className="block text-[11px] text-info mb-1.5">Secret Admin Key</label>
-                <input
-                  type="password"
-                  required
-                  value={secretPassword}
-                  onChange={(e) => setSecretPassword(e.target.value)}
-                  onFocus={() => setShy(true)}
-                  onBlur={() => setShy(false)}
-                  placeholder="Enter system master password"
-                  className="w-full bg-shaft border border-info/40 rounded-lg px-3.5 py-2.5 text-[13px] text-info placeholder-info/25 focus:outline-none focus:border-info transition-colors"
-                />
+                <div className="relative">
+                  <input
+                    type={showSecret ? "text" : "password"}
+                    required
+                    value={secretPassword}
+                    onChange={(e) => setSecretPassword(e.target.value)}
+                    onFocus={() => setShy(true)}
+                    onBlur={() => setShy(false)}
+                    placeholder="Enter system master password"
+                    className="bf-input w-full bg-[#141a1f] border border-info/40 rounded-lg px-3.5 py-2.5 pr-11 text-[13px] text-info placeholder-info/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-info transition-colors"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowSecret((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-info/70 hover:text-info transition-colors"
+                    aria-label={showSecret ? "Hide password" : "Show password"}
+                  >
+                    {showSecret ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.58 10.58a2 2 0 002.83 2.83M9.88 5.09A9.77 9.77 0 0112 5c5.05 0 8.7 3.55 10 7-.42 1.13-1.05 2.19-1.86 3.12M6.53 6.53C4.5 7.86 2.94 9.77 2 12c1.3 3.45 4.95 7 10 7 1.4 0 2.7-.27 3.86-.75" />
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2 12c1.3-3.45 4.95-7 10-7s8.7 3.55 10 7c-1.3 3.45-4.95 7-10 7s-8.7-3.55-10-7z" />
+                        <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
                 <span className="block text-[10px] text-dim/70 mt-1">
                   Required for admin credentials initialization.
                 </span>
