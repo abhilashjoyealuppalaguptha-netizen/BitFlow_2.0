@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../hooks/useAuth";
 
@@ -239,9 +241,16 @@ const SOCIAL_LINKS = [
 
 export default function LandingPage() {
   const { user, loading } = useAuth();
+  const router = useRouter();
 
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
 
-  if (loading) {
+  // Show spinner while auth is loading OR while redirecting a logged-in user
+  if (loading || user) {
     return (
       <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
         <span className="text-ghost text-sm">
@@ -269,26 +278,15 @@ export default function LandingPage() {
         </div>
 
         <div className="flex items-center gap-5 justify-self-end">
-          {user ? (
-            <Link href="/profile" className="flex items-center gap-2 cursor-pointer group">
-              <div className="w-7 h-7 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-xs">
-                {user.username.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-xs text-pale group-hover:text-bright transition-colors">{user.username}</span>
-            </Link>
-          ) : (
-            <>
-              <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
-                Sign In
-              </Link>
-              <Link
-                href="/login"
-                className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
-              >
-                Let&apos;s Go →
-              </Link>
-            </>
-          )}
+          <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
+            Sign In
+          </Link>
+          <Link
+            href="/login"
+            className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
+          >
+            Let&apos;s Go →
+          </Link>
         </div>
       </nav>
 
