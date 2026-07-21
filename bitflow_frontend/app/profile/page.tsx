@@ -86,7 +86,7 @@ function ProfileContent() {
 
   if (loadingStats || !data || !data.user) {
     return (
-      <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
+      <div className="min-h-screen bg-void text-bright flex items-center justify-center">
         <span className="text-ghost text-sm">
           <span className="text-phosphor">►</span> loading profile
           <span className="animate-blink">_</span>
@@ -111,7 +111,7 @@ function ProfileContent() {
   });
 
   return (
-    <div className="min-h-screen bg-void text-bright font-mono">
+    <div className="min-h-screen bg-void text-bright">
       {/* Nav */}
       <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <Link href="/" className="font-display font-bold text-lg hover:text-phosphor transition-colors">

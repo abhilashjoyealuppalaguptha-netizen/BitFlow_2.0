@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -249,10 +249,9 @@ export default function LandingPage() {
     }
   }, [loading, user, router]);
 
-  // Show spinner while auth is loading OR while redirecting a logged-in user
   if (loading || user) {
     return (
-      <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
+      <div className="min-h-screen bg-void text-bright flex items-center justify-center">
         <span className="text-ghost text-sm">
           <span className="text-phosphor">►</span> booting bitflow
           <span className="animate-blink">_</span>
@@ -262,7 +261,7 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-void text-bright font-mono overflow-x-hidden selection:bg-phosphor/30">
+    <main className="min-h-screen bg-void text-bright overflow-x-hidden selection:bg-phosphor/30">
       {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
       <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <Link href="/" className="justify-self-start font-display font-bold text-lg">
@@ -278,15 +277,26 @@ export default function LandingPage() {
         </div>
 
         <div className="flex items-center gap-5 justify-self-end">
-          <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
-            Sign In
-          </Link>
-          <Link
-            href="/login"
-            className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
-          >
-            Let&apos;s Go →
-          </Link>
+          {user ? (
+            <Link href="/profile" className="flex items-center gap-2 cursor-pointer group">
+              <div className="w-7 h-7 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-xs">
+                {user.username.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs text-pale group-hover:text-bright transition-colors">{user.username}</span>
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
+                Sign In
+              </Link>
+              <Link
+                href="/login"
+                className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
+              >
+                Let&apos;s Go →
+              </Link>
+            </>
+          )}
         </div>
       </nav>
 

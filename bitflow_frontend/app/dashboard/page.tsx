@@ -296,8 +296,8 @@ function BitzyMascot({ username }: { username: string }) {
       setTimeout(() => {
         setThoughtIdx((i) => (i + 1) % BITZY_THOUGHTS.length);
         setThoughtVisible(true);
-      }, 700);
-    }, 8000);
+      }, 400);
+    }, 4800);
     return () => clearInterval(id);
   }, []);
 
@@ -622,7 +622,7 @@ function DashboardContent() {
   const weeks = stats ? buildCompactWeeks(stats.activity) : [];
 
   return (
-    <div className="relative min-h-screen bg-void text-bright font-mono overflow-hidden flex flex-col">
+    <div className="relative min-h-screen bg-void text-bright overflow-hidden flex flex-col">
       <LatticeBackground />
 
       {/* Nav */}

@@ -129,7 +129,7 @@ function BackgroundParticles() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     let raf = 0;
@@ -524,7 +524,7 @@ export default function LoginPage() {
     : "Hey Hello!! I'm Bitzy 👋";
 
   return (
-    <div className="relative min-h-screen bg-void overflow-hidden flex flex-col items-center justify-center px-6 py-12 font-mono text-bright">
+    <div className="relative min-h-screen bg-void overflow-hidden flex flex-col items-center justify-center px-6 py-12 text-bright">
       <style>{`
         .bf-input:-webkit-autofill,
         .bf-input:-webkit-autofill:hover,
