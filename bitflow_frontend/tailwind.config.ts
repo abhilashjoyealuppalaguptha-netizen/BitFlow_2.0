@@ -41,9 +41,12 @@ const config: Config = {
 
       // ── Typography ───────────────────────────────────────────────────────
       fontFamily: {
-        // UI labels, headings — loaded in layout.tsx
-        display: ["var(--font-display)", "monospace"],
-        // Code, terminal output — loaded in layout.tsx
+        // Headings, branding, body copy — Inter, site-wide
+        display: ["var(--font-display)", "sans-serif"],
+        // Legacy class name used for big headings across pages — also Inter now
+        serif:   ["var(--font-display)", "sans-serif"],
+        // ONLY for genuinely-code contexts: terminal output, compiler logs,
+        // waveform labels — real monospace alignment matters here.
         mono:    ["var(--font-mono)", "monospace"],
       },
 
