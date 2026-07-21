@@ -4,10 +4,20 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  // Rate limit: max 5 registrations per minute per IP
+  const { success } = rateLimit(request, { limit: 5, windowMs: 60_000, prefix: "register" });
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Please wait a moment and try again." },
+      { status: 429 }
+    );
+  }
+
   try {
     const { username, password, role, secretPassword } = await request.json();
     const normalizedUsername = typeof username === "string" ? username.trim() : "";

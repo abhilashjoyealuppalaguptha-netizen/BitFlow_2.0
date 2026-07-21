@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  // Rate limit: max 10 login attempts per minute per IP
+  const { success } = rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "login" });
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Please wait a moment and try again." },
+      { status: 429 }
+    );
+  }
+
   try {
     const { username, password, role } = await request.json();
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
@@ -57,6 +67,7 @@ export async function POST(request: Request) {
     cookies().set("bitflow_session", user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",   // prevents CSRF attacks
       maxAge: 60 * 60 * 24 * 7, // 1 week
       path: "/",
     });
