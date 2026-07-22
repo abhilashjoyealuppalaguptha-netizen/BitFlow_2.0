@@ -25,8 +25,15 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import MonacoEditor, { OnMount, BeforeMount } from "@monaco-editor/react";
+import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
+
+// Configure Monaco loader to use jsDelivr CDN
+loader.config({
+  paths: {
+    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs",
+  },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
