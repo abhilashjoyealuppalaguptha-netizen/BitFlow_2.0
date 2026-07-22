@@ -50,6 +50,19 @@ const nextConfig = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Proxy Rewrite (Bypasses CORS & Adblockers by routing through Next.js)
+  // ─────────────────────────────────────────────────────────────────────────
+  async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    return [
+      {
+        source: "/api/sandbox-proxy/:path*",
+        destination: `${backendUrl}/:path*`,
+      },
+    ];
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Monaco Editor configuration
   // ─────────────────────────────────────────────────────────────────────────
   webpack: (config, { isServer }) => {

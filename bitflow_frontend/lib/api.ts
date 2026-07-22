@@ -28,8 +28,7 @@ import type { SimulateRequest, SimulateResponse } from "./types";
  * NEXT_PUBLIC_ prefix is required by Next.js for variables that must be
  * visible in the browser bundle.
  */
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const BASE_URL = "/api/sandbox-proxy";
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -58,7 +57,7 @@ function normaliseError(err: unknown): Error {
     // Network-level failure (backend not running, CORS, timeout)
     if (!axErr.response) {
       return new Error(
-        `Cannot reach the backend at ${BASE_URL}. ` +
+        `Cannot reach the backend at ${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}. ` +
         "Is the FastAPI server running? (uvicorn api.main:app --reload)"
       );
     }
