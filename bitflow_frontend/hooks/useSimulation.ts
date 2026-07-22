@@ -125,8 +125,11 @@ export interface UseSimulationReturn {
 export function useSimulation(): UseSimulationReturn {
   // Persisted to localStorage — restored automatically on refresh.
   // Key names are stable strings; changing them clears stored values.
-  const [designCode,    setDesignCode]    = useLocalStorage<string>("bitflow_design_v",    DEFAULT_DESIGN);
-  const [testbenchCode, setTestbenchCode] = useLocalStorage<string>("bitflow_testbench_v", DEFAULT_TESTBENCH);
+  const [storedDesignCode,    setDesignCode]    = useLocalStorage<string>("bitflow_design_v",    DEFAULT_DESIGN);
+  const [storedTestbenchCode, setTestbenchCode] = useLocalStorage<string>("bitflow_testbench_v", DEFAULT_TESTBENCH);
+
+  const designCode = storedDesignCode.trim() === "" ? DEFAULT_DESIGN : storedDesignCode;
+  const testbenchCode = storedTestbenchCode.trim() === "" ? DEFAULT_TESTBENCH : storedTestbenchCode;
 
   const [runState,      setRunState]      = useState<RunState>("idle");
   const [result,        setResult]        = useState<SimulateResponse | null>(null);
