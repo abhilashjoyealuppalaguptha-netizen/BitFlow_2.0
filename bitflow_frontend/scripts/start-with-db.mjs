@@ -20,7 +20,7 @@ if (databaseUrl?.startsWith("file:/")) {
 
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 
-function run(args) {
+function run(args, ignoreError = false) {
   const result = spawnSync(npx, args, {
     stdio: "inherit",
     env: process.env,
@@ -29,11 +29,12 @@ function run(args) {
 
   if (result.error) {
     console.error(`[DB Setup] Failed to execute command ${npx} ${args.join(" ")}:`, result.error);
-    process.exit(1);
+    if (!ignoreError) process.exit(1);
   }
 
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    console.warn(`[DB Setup] Command ${npx} ${args.join(" ")} exited with status ${result.status}`);
+    if (!ignoreError) process.exit(result.status ?? 1);
   }
 }
 
@@ -76,7 +77,7 @@ try {
 
     // Generate Prisma Client for the new provider
     console.log("[DB Setup] Regenerating Prisma Client...");
-    run(["prisma", "generate"]);
+    run(["prisma", "generate"], true);
   } else {
     console.log(`[DB Setup] Database provider is already set to "${targetProvider}".`);
 
@@ -88,21 +89,22 @@ try {
       );
       writeFileSync(schemaPath, schema, "utf-8");
       console.log("[DB Setup] Added directUrl for PostgreSQL connection pooling.");
-      run(["prisma", "generate"]);
+      run(["prisma", "generate"], true);
     }
   }
 } catch (err) {
   console.error("[DB Setup] Failed to dynamically adjust prisma schema:", err);
 }
 
-// 3. Push schema to database
+// 3. Push schema to database (non-fatal so server always starts)
 console.log("[DB Setup] Pushing schema to database...");
-run(["prisma", "db", "push"]);
+run(["prisma", "db", "push"], true);
 
-// 4. Seed database
+// 4. Seed database (non-fatal)
 console.log("[DB Setup] Seeding database...");
-run(["prisma", "db", "seed"]);
+run(["prisma", "db", "seed"], true);
 
-// 5. Start Next.js server
+// 5. Start Next.js server (must be fatal if this fails)
 console.log("[DB Setup] Starting application...");
-run(["next", "start"]);
+run(["next", "start"], false);
+
