@@ -54,10 +54,16 @@ function normaliseError(err: unknown): Error {
   if (axios.isAxiosError(err)) {
     const axErr = err as AxiosError<{ error?: string; detail?: string }>;
 
+    const effectiveBackendUrl =
+      process.env.NEXT_PUBLIC_API_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://bitflow-backend-uyji.onrender.com"
+        : "http://127.0.0.1:8000");
+
     // Network-level failure (backend not running, CORS, timeout)
     if (!axErr.response) {
       return new Error(
-        `Cannot reach the backend at ${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}. ` +
+        `Cannot reach the backend at ${effectiveBackendUrl}. ` +
         "Is the FastAPI server running? (uvicorn api.main:app --reload)"
       );
     }
@@ -67,9 +73,16 @@ function normaliseError(err: unknown): Error {
     if (data?.detail) return new Error(data.detail);
     if (data?.error)  return new Error(data.error);
 
+    // 502 / 504 Gateway errors (Render free instance cold starts)
+    if (axErr.response.status === 502 || axErr.response.status === 504) {
+      return new Error(
+        "Backend server is spinning up or temporarily busy (Render Cold Start). Please wait 15-20 seconds and click RUN again."
+      );
+    }
+
     // Fall back to HTTP status text
     return new Error(
-      `Server error ${axErr.response.status}: ${axErr.response.statusText}`
+      `Server error ${axErr.response.status}: ${axErr.response.statusText || "Bad Gateway"}`
     );
   }
 
