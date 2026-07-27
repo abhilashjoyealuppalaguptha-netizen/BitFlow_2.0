@@ -108,7 +108,8 @@ function normaliseError(err: unknown): Error {
  * @param payload - design_v, testbench_v, optional timeout override
  */
 export async function runSimulation(
-  payload: SimulateRequest
+  payload: SimulateRequest,
+  retries = 2
 ): Promise<SimulateResponse> {
   try {
     const { data } = await apiClient.post<SimulateResponse>(
@@ -117,6 +118,16 @@ export async function runSimulation(
     );
     return data;
   } catch (err) {
+    // If Render backend is sleeping (502/504 cold start), auto-retry up to 2 times
+    if (
+      axios.isAxiosError(err) &&
+      (err.response?.status === 502 || err.response?.status === 504) &&
+      retries > 0
+    ) {
+      console.log(`[BitFlow] Render cold start detected (502/504). Auto-retrying (${retries} attempts left)...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return runSimulation(payload, retries - 1);
+    }
     throw normaliseError(err);
   }
 }
