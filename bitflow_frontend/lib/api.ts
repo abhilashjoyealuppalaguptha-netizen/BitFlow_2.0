@@ -73,10 +73,15 @@ function normaliseError(err: unknown): Error {
     if (data?.detail) return new Error(data.detail);
     if (data?.error)  return new Error(data.error);
 
-    // 502 / 504 Gateway errors (Render free instance cold starts)
-    if (axErr.response.status === 502 || axErr.response.status === 504) {
+    // 429 / 502 / 503 / 504 Gateway & Rate limit errors
+    if (
+      axErr.response.status === 429 ||
+      axErr.response.status === 502 ||
+      axErr.response.status === 503 ||
+      axErr.response.status === 504
+    ) {
       return new Error(
-        "Backend server is spinning up or temporarily busy (Render Cold Start). Please wait 15-20 seconds and click RUN again."
+        "Backend server is rate-limited or cold starting (Render Free Limit). Retrying automatically..."
       );
     }
 
@@ -109,7 +114,7 @@ function normaliseError(err: unknown): Error {
  */
 export async function runSimulation(
   payload: SimulateRequest,
-  retries = 2
+  retries = 3
 ): Promise<SimulateResponse> {
   try {
     const { data } = await apiClient.post<SimulateResponse>(
@@ -118,14 +123,16 @@ export async function runSimulation(
     );
     return data;
   } catch (err) {
-    // If Render backend is sleeping (502/504 cold start), auto-retry up to 2 times
+    // If Render backend is sleeping or rate limited (429/502/503/504), auto-retry with backoff
     if (
       axios.isAxiosError(err) &&
-      (err.response?.status === 502 || err.response?.status === 504) &&
+      err.response?.status &&
+      [429, 502, 503, 504].includes(err.response.status) &&
       retries > 0
     ) {
-      console.log(`[BitFlow] Render cold start detected (502/504). Auto-retrying (${retries} attempts left)...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const delayMs = (4 - retries) * 3000; // 3s, 6s, 9s backoff
+      console.log(`[BitFlow] Server response ${err.response.status}. Auto-retrying in ${delayMs/1000}s (${retries} attempts left)...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
       return runSimulation(payload, retries - 1);
     }
     throw normaliseError(err);
