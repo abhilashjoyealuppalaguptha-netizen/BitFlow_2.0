@@ -18,10 +18,10 @@
  * ✅ NOW: Saves all submissions to Prisma via saveSubmission()
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Problem, SubmissionResult, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse } from "@/lib/types";
-import { runSimulation } from "@/lib/api";
+import { runSimulation, checkHealth } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -105,6 +105,12 @@ function compareStdout(actual: string, expected: string): boolean {
 
 export function useProblem(problem: Problem): UseProblemReturn {
   const { user } = useAuth();
+
+  // Pre-warm backend in background on problem page load
+  useEffect(() => {
+    checkHealth();
+  }, []);
+
   const [designCode,    setDesignCode]    = useState(problem.starterCode);
   const [testbenchCode, setTestbenchCode] = useState(problem.publicTestbench);
   const [runState,      setRunState]      = useState<ProblemRunState>("idle");

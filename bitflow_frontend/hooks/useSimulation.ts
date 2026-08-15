@@ -15,8 +15,8 @@
 
 "use client";
 
-import { useState, useCallback } from "react";
-import { runSimulation } from "@/lib/api";
+import { useState, useCallback, useEffect } from "react";
+import { runSimulation, checkHealth } from "@/lib/api";
 import { parseVcd } from "@/lib/vcd-parser";
 import type { RunState, SimulateResponse, ParsedVcd } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
@@ -135,7 +135,10 @@ export function useSimulation(): UseSimulationReturn {
   const [result,        setResult]        = useState<SimulateResponse | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   // ── NEW ──────────────────────────────────────────────────────────────────
-  const [parsedVcd,     setParsedVcd]     = useState<ParsedVcd | null>(null);
+  // ── Pre-warm backend in background on load ──────────────────────────────────
+  useEffect(() => {
+    checkHealth();
+  }, []);
 
   /**
    * Kick off a simulation run.

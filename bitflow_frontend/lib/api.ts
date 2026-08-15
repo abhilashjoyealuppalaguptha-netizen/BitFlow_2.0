@@ -123,15 +123,14 @@ export async function runSimulation(
     );
     return data;
   } catch (err) {
-    // If Render backend is sleeping or rate limited (429/502/503/504), auto-retry with backoff
-    if (
+    // If connection dropped, socket timed out, cold starting, or rate limited (429/502/503/504), auto-retry
+    const isRetryable =
       axios.isAxiosError(err) &&
-      err.response?.status &&
-      [429, 502, 503, 504].includes(err.response.status) &&
-      retries > 0
-    ) {
+      (!err.response || (err.response.status && [429, 502, 503, 504].includes(err.response.status)));
+
+    if (isRetryable && retries > 0) {
       const delayMs = (4 - retries) * 3000; // 3s, 6s, 9s backoff
-      console.log(`[BitFlow] Server response ${err.response.status}. Auto-retrying in ${delayMs/1000}s (${retries} attempts left)...`);
+      console.log(`[BitFlow] Server connection/response issue. Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return runSimulation(payload, retries - 1);
     }
