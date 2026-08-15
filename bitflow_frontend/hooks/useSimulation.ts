@@ -134,7 +134,8 @@ export function useSimulation(): UseSimulationReturn {
   const [runState,      setRunState]      = useState<RunState>("idle");
   const [result,        setResult]        = useState<SimulateResponse | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
-  // ── NEW ──────────────────────────────────────────────────────────────────
+  const [parsedVcd,     setParsedVcd]     = useState<ParsedVcd | null>(null);
+
   // ── Pre-warm backend in background on load ──────────────────────────────────
   useEffect(() => {
     checkHealth();
