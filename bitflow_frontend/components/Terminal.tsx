@@ -89,16 +89,25 @@ function RunningPrompt() {
 
 /** Infrastructure / network error */
 function NetworkError({ message }: { message: string }) {
+  const isColdStart = message.includes("Render") || message.includes("cold starting") || message.includes("rate-limited");
+
   return (
     <div className="flex flex-col gap-1 font-mono text-[12px]">
       <div className="flex items-center gap-2 text-danger">
         <span>✗</span>
         <span className="font-semibold">Connection failed</span>
       </div>
-      <div className="pl-4 text-danger/70 break-all">{message}</div>
-      <div className="pl-4 text-dim mt-1">
-        Make sure the FastAPI backend is running:{" "}
-        <span className="text-pale">uvicorn api.main:app --reload</span>
+      <div className="pl-4 text-danger/80 break-all">{message}</div>
+      <div className="pl-4 text-dim mt-2 leading-relaxed">
+        {isColdStart ? (
+          <span>
+            💡 <span className="text-pale font-medium">Render Free Tier Notice:</span> Backend services automatically sleep after 15 minutes of inactivity. Please wait 15-20 seconds for the container to wake up and click <span className="text-phosphor">RUN</span> again.
+          </span>
+        ) : (
+          <span>
+            Make sure the FastAPI backend is deployed and running cleanly.
+          </span>
+        )}
       </div>
     </div>
   );
