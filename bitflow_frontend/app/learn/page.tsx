@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import ScrollUnlock from "../../components/ScrollUnlock";
 import AuthGate from "../../components/AuthGate";
+import VLSIRoadmap from "@/components/VLSIRoadmap";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -431,9 +432,10 @@ export default function LearnPage() {
   const [questions, setQuestions] = useState<Problem[]>([]);
   const [progress, setProgress] = useState<ProgressRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"curriculum" | "roadmap">("curriculum");
 
   useEffect(() => {
-    document.title = "Learn — BitFlow";
+    document.title = activeTab === "roadmap" ? "VLSI Career Roadmap — BitFlow" : "Learn — BitFlow";
     
     Promise.all([
       fetch("/api/problems").then((r) => r.json()),
@@ -445,7 +447,7 @@ export default function LearnPage() {
       })
       .catch((err) => console.error("Error loading dynamic curriculum:", err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeTab]);
 
 
   const beginnerQuestions = questions.filter(
@@ -520,62 +522,94 @@ const advancedQuestions = questions.filter(
           <span className="font-mono text-[11px] text-ghost">Learning Path</span>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-5 font-mono text-[11px]">
           {progress && (
             <div className="text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 backdrop-blur-md rounded-full px-3 py-1">
               🏆 {progress.totalXp} XP
             </div>
           )}
-          <Link href="/dashboard" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
+          <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
             Dashboard
           </Link>
-          <Link href="/sandbox" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
+          <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
             Sandbox
           </Link>
-          <Link href="/arena" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
+          <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
             Arena
           </Link>
-          <Link href="/academy" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
+          <Link href="/academy" className="text-ghost hover:text-bright transition-colors">
             Academy
           </Link>
         </div>
       </header>
 
       {/* Hero */}
-      <div className="relative px-6 py-12 border-b border-rim/30">
+      <div className="relative px-6 py-10 border-b border-rim/30">
         <div
           className="absolute inset-0 pointer-events-none opacity-60"
           style={{ background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(0,232,122,.06), transparent 60%)" }}
         />
-        <div className="relative max-w-3xl">
-          <span className="inline-block font-mono text-[10px] text-phosphor uppercase tracking-widest border border-phosphor/25 bg-phosphor/10 backdrop-blur-md px-3 py-1 rounded-full mb-4">
-            Problem Arena
-          </span>
-          <h1 className="font-serif text-[32px] text-bright leading-tight mb-3">
-            Master Verilog,<br />
-            <span className="text-phosphor">one circuit at a time.</span>
-          </h1>
-          <p className="font-mono text-[12px] text-ghost leading-relaxed max-w-lg">
-            Structured learning path from basic gates to RTL design.
-            Every problem runs real simulation in Icarus Verilog.
-            Build. Simulate. Understand.
-          </p>
+        <div className="relative max-w-4xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-3 max-w-xl">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-phosphor uppercase tracking-widest border border-phosphor/25 bg-phosphor/10 backdrop-blur-md px-3 py-1 rounded-full">
+                ECE Industry Blueprint
+              </span>
+            </div>
+            <h1 className="font-serif text-[30px] md:text-[34px] text-bright leading-tight">
+              Master Digital Systems &amp; <br />
+              <span className="text-phosphor">VLSI Chip Architecture.</span>
+            </h1>
+            <p className="font-mono text-[12px] text-ghost leading-relaxed">
+              Explore structured problem-solving modules or map out your exact career path across RTL Design, Verification, DFT, and Physical Layout.
+            </p>
+          </div>
+
+          {/* View Switcher Tabs */}
+          <div className="flex items-center gap-1.5 p-1.5 rounded-xl border border-rim/60 bg-pit/50 backdrop-blur-md shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab("curriculum")}
+              className={`font-mono text-[11px] px-4 py-2 rounded-lg border transition-all ${
+                activeTab === "curriculum"
+                  ? "bg-phosphor/15 border-phosphor/40 text-phosphor font-bold shadow-[0_0_15px_rgba(0,232,122,0.2)]"
+                  : "bg-transparent border-transparent text-dim hover:text-bright"
+              }`}
+            >
+              📚 Curriculum Path
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("roadmap")}
+              className={`font-mono text-[11px] px-4 py-2 rounded-lg border transition-all ${
+                activeTab === "roadmap"
+                  ? "bg-phosphor/15 border-phosphor/40 text-phosphor font-bold shadow-[0_0_15px_rgba(0,232,122,0.2)]"
+                  : "bg-transparent border-transparent text-dim hover:text-bright"
+              }`}
+            >
+              🗺️ VLSI Career Roadmap
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main levels layout */}
-      <main className="max-w-4xl w-full mx-auto px-6 py-8 flex-1">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
-            <p className="font-mono text-[11px] text-dim">Loading curriculum schema registry...</p>
-          </div>
+      {/* Main layout */}
+      <main className="max-w-5xl w-full mx-auto px-6 py-8 flex-1">
+        {activeTab === "curriculum" ? (
+          loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
+              <p className="font-mono text-[11px] text-dim">Loading curriculum schema registry...</p>
+            </div>
+          ) : (
+            <div className="space-y-8 animate-pulse_once max-w-4xl mx-auto">
+              {levels.map((level) => (
+                <LevelSection key={level.id} level={level} progress={progress} />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="space-y-8 animate-pulse_once">
-            {levels.map((level) => (
-              <LevelSection key={level.id} level={level} progress={progress} />
-            ))}
-          </div>
+          <VLSIRoadmap />
         )}
       </main>
 
