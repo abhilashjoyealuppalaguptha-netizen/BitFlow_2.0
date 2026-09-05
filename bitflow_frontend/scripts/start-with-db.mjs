@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const databaseUrl = process.env.DATABASE_URL || "file:/app/prisma/dev.db";
+const databaseUrl = process.env.DATABASE_URL || "file:/app/data/dev.db";
 
 // 1. Ensure local SQLite file directory exists
 if (databaseUrl.startsWith("file:")) {
@@ -54,31 +54,35 @@ function runPrisma(args, ignoreError = false) {
 // 2. Dynamic provider switching
 const schemaPath = join(__dirname, "..", "prisma", "schema.prisma");
 try {
-  let schema = readFileSync(schemaPath, "utf-8");
+  if (existsSync(schemaPath)) {
+    let schema = readFileSync(schemaPath, "utf-8");
 
-  const isPostgres = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://");
-  const targetProvider = isPostgres ? "postgresql" : "sqlite";
+    const isPostgres = databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://");
+    const targetProvider = isPostgres ? "postgresql" : "sqlite";
 
-  const currentProviderMatch = schema.match(/provider\s*=\s*"([^"]+)"/);
-  const currentProvider = currentProviderMatch ? currentProviderMatch[1] : null;
+    const currentProviderMatch = schema.match(/provider\s*=\s*"([^"]+)"/);
+    const currentProvider = currentProviderMatch ? currentProviderMatch[1] : null;
 
-  if (currentProvider && currentProvider !== targetProvider) {
-    console.log(`[DB Setup] Switching provider in schema.prisma from "${currentProvider}" to "${targetProvider}"...`);
-    schema = schema.replace(/provider\s*=\s*"[^"]+"/, `provider  = "${targetProvider}"`);
+    if (currentProvider && currentProvider !== targetProvider) {
+      console.log(`[DB Setup] Switching provider in schema.prisma from "${currentProvider}" to "${targetProvider}"...`);
+      schema = schema.replace(/provider\s*=\s*"[^"]+"/, `provider  = "${targetProvider}"`);
 
-    if (targetProvider === "postgresql") {
-      if (!schema.includes("directUrl")) {
-        schema = schema.replace(/(url\s*=\s*env\("DATABASE_URL"\))/, `$1\n  directUrl = env("DIRECT_URL")`);
+      if (targetProvider === "postgresql") {
+        if (!schema.includes("directUrl")) {
+          schema = schema.replace(/(url\s*=\s*env\("DATABASE_URL"\))/, `$1\n  directUrl = env("DIRECT_URL")`);
+        }
+      } else {
+        schema = schema.replace(/\n\s*directUrl\s*=\s*env\("DIRECT_URL"\)/, "");
       }
-    } else {
-      schema = schema.replace(/\n\s*directUrl\s*=\s*env\("DIRECT_URL"\)/, "");
-    }
 
-    writeFileSync(schemaPath, schema, "utf-8");
-    console.log("[DB Setup] Regenerating Prisma Client...");
-    runPrisma(["generate"], true);
+      writeFileSync(schemaPath, schema, "utf-8");
+      console.log("[DB Setup] Regenerating Prisma Client...");
+      runPrisma(["generate"], true);
+    } else {
+      console.log(`[DB Setup] Database provider is already set to "${targetProvider}".`);
+    }
   } else {
-    console.log(`[DB Setup] Database provider is already set to "${targetProvider}".`);
+    console.warn(`[DB Setup] Warning: schema.prisma not found at ${schemaPath}`);
   }
 } catch (err) {
   console.error("[DB Setup] Failed to dynamically adjust prisma schema:", err);
@@ -86,20 +90,22 @@ try {
 
 // 3. Push schema to database
 console.log("[DB Setup] Pushing schema to database...");
-runPrisma(["db", "push", "--accept-data-loss"], false);
+runPrisma(["db", "push", "--accept-data-loss"], true);
 
 // 4. Seed database (non-fatal)
 console.log("[DB Setup] Seeding database...");
 runPrisma(["db", "seed"], true);
 
-// 5. Start Next.js server
+// 5. Start Next.js server bound to 0.0.0.0
 console.log("[DB Setup] Starting application...");
 const nextBin = join(__dirname, "..", "node_modules", ".bin", "next");
+const startArgs = ["start", "-H", "0.0.0.0", "-p", "3000"];
 if (existsSync(nextBin)) {
-  runCommand(nextBin, ["start"], false);
+  runCommand(nextBin, startArgs, false);
 } else {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-  runCommand(npx, ["next", "start"], false);
+  runCommand(npx, ["next", ...startArgs], false);
 }
+
 
 
