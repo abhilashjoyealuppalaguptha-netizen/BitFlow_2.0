@@ -94,16 +94,18 @@ export async function POST(request: Request) {
     // Set HTTP-only session cookie
     cookies().set("bitflow_session", user.id, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.HTTPS === "true",
+      sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 1 week
       path: "/",
     });
 
     return NextResponse.json({ user });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Registration error:", err);
+    const errorMessage = err?.message || "Internal Server Error";
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
