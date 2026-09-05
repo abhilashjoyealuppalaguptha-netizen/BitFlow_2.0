@@ -35,7 +35,13 @@ services:
     environment:
       - PORT=3000
       - NEXT_PUBLIC_API_URL=http://api:8080
-      - DATABASE_URL=file:./dev.db
+      - DATABASE_URL=file:/app/prisma/dev.db
+    volumes:
+      - bitflow-db:/app/prisma
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  bitflow-db:
+
