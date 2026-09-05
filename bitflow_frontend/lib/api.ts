@@ -114,7 +114,7 @@ function normaliseError(err: unknown): Error {
  */
 export async function runSimulation(
   payload: SimulateRequest,
-  retries = 3
+  retries = 6
 ): Promise<SimulateResponse> {
   try {
     const { data } = await apiClient.post<SimulateResponse>(
@@ -129,8 +129,8 @@ export async function runSimulation(
       (!err.response || (err.response.status && [429, 502, 503, 504].includes(err.response.status)));
 
     if (isRetryable && retries > 0) {
-      const delayMs = (4 - retries) * 3000; // 3s, 6s, 9s backoff
-      console.log(`[BitFlow] Server connection/response issue. Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
+      const delayMs = Math.min((7 - retries) * 3000, 10000); // 3s, 6s, 9s, 10s, 10s, 10s backoff
+      console.log(`[BitFlow] Server connection/response issue (Render cold start). Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return runSimulation(payload, retries - 1);
     }
