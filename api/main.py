@@ -81,16 +81,12 @@ def create_app() -> FastAPI:
         title       = "Verilog Sandbox API",
         description = (
             "A secure, containerised REST API for compiling and simulating "
-            "Verilog designs using Icarus Verilog.\n\n"
-            "**Quick start:**\n"
-            "1. Build the sandbox image: `docker build -t verilog-sandbox:latest .`\n"
-            "2. Start the API: `uvicorn api.main:app --reload`\n"
-            "3. POST to `/simulate` with your design and testbench source.\n\n"
-            "See `/docs` for the interactive Swagger UI."
+            "Verilog designs using Icarus Verilog."
         ),
         version     = "1.0.0",
-        docs_url    = "/docs",
-        redoc_url   = "/redoc",
+        docs_url    = "/docs" if settings.enable_docs else None,
+        redoc_url   = "/redoc" if settings.enable_docs else None,
+        openapi_url = "/openapi.json" if settings.enable_docs else None,
         lifespan    = lifespan,
     )
 
@@ -118,9 +114,11 @@ def create_app() -> FastAPI:
 
     # ── Root redirect ─────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)
-    def root() -> RedirectResponse:
-        """Redirect bare GET / to the Swagger UI."""
-        return RedirectResponse(url="/docs")
+    def root():
+        """Root endpoint."""
+        if settings.enable_docs:
+            return RedirectResponse(url="/docs")
+        return {"status": "ok", "service": "Verilog Sandbox API"}
 
     return app
 

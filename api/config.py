@@ -126,10 +126,14 @@ class Settings(BaseSettings):
         description="GID of the non-root user inside the sandbox container.",
     )
 
-    # ── JWT authentication ────────────────────────────────────────────────
+    # ── JWT authentication & Security ─────────────────────────────────────
     jwt_secret: str = Field(
         default="bitflow-dev-secret-change-in-production",
         description="Shared HMAC-SHA256 secret for signing/verifying JWTs between frontend and backend.",
+    )
+    enable_docs: bool = Field(
+        default=False,
+        description="Enable interactive OpenAPI /docs and /redoc Swagger UI endpoints.",
     )
 
     # ── Computed helpers ──────────────────────────────────────────────────────

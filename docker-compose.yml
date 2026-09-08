@@ -13,7 +13,7 @@ services:
     container_name: bitflow-api
     restart: unless-stopped
     ports:
-      - "8000:8080"
+      - "127.0.0.1:8000:8080"
     environment:
       - PORT=8080
       - TIMEOUT_SECONDS=30
