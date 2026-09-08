@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from api.config import settings
@@ -38,6 +38,7 @@ from api.utils import (
     read_vcd,
     write_source_files,
 )
+from api.jwt_auth import verify_jwt
 
 logger  = logging.getLogger(__name__)
 router  = APIRouter(prefix="/simulate", tags=["Simulation"])
@@ -108,6 +109,7 @@ async def _execute_simulation(
 
 @router.post(
     "",                              # mounts at POST /simulate
+    dependencies=[Depends(verify_jwt)],
     response_model=SimulateResponse,
     summary="Run simulation (JSON)",
     description=(
@@ -158,6 +160,7 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
 
 @router.post(
     "/upload",
+    dependencies=[Depends(verify_jwt)],
     response_model=SimulateResponse,
     summary="Run simulation (file upload)",
     description=(

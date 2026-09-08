@@ -126,6 +126,12 @@ class Settings(BaseSettings):
         description="GID of the non-root user inside the sandbox container.",
     )
 
+    # ── JWT authentication ────────────────────────────────────────────────
+    jwt_secret: str = Field(
+        default="bitflow-dev-secret-change-in-production",
+        description="Shared HMAC-SHA256 secret for signing/verifying JWTs between frontend and backend.",
+    )
+
     # ── Computed helpers ──────────────────────────────────────────────────────
     @property
     def sandbox_user(self) -> str:

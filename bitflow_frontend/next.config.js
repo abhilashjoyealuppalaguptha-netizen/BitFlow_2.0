@@ -49,23 +49,8 @@ const nextConfig = {
     ];
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Proxy Rewrite (Bypasses CORS & Adblockers by routing through Next.js)
-  // ─────────────────────────────────────────────────────────────────────────
-  async rewrites() {
-    const backendUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
-      (process.env.NODE_ENV === "production"
-        ? "https://bitflow-backend-uyji.onrender.com"
-        : "http://127.0.0.1:8000");
-
-    return [
-      {
-        source: "/api/sandbox-proxy/:path*",
-        destination: `${backendUrl}/:path*`,
-      },
-    ];
-  },
+  // Proxy rewrites removed — simulation requests now go through
+  // the authenticated server-side API route at /api/simulate
 
   // ─────────────────────────────────────────────────────────────────────────
   // Monaco Editor configuration

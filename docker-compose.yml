@@ -17,6 +17,7 @@ services:
     environment:
       - PORT=8080
       - TIMEOUT_SECONDS=30
+      - JWT_SECRET=${JWT_SECRET:-bitflow-dev-secret-change-in-production}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 15s
@@ -37,6 +38,7 @@ services:
       - NEXT_PUBLIC_API_URL=http://api:8080
       - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}
       - DIRECT_URL=${DIRECT_URL:-}
+      - JWT_SECRET=${JWT_SECRET:-bitflow-dev-secret-change-in-production}
     volumes:
       - bitflow-data:/app/data
     depends_on:

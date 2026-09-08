@@ -28,7 +28,7 @@ import type { SimulateRequest, SimulateResponse } from "./types";
  * NEXT_PUBLIC_ prefix is required by Next.js for variables that must be
  * visible in the browser bundle.
  */
-const BASE_URL = "/api/sandbox-proxy";
+const BASE_URL = "/api/simulate";
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -118,7 +118,7 @@ export async function runSimulation(
 ): Promise<SimulateResponse> {
   try {
     const { data } = await apiClient.post<SimulateResponse>(
-      "/simulate",
+      "",
       payload
     );
     return data;
@@ -147,7 +147,7 @@ export async function runSimulation(
  */
 export async function checkHealth(): Promise<boolean> {
   try {
-    await apiClient.get("/health", { timeout: 3_000 });
+    await axios.get("/api/simulate/health", { timeout: 3_000 });
     return true;
   } catch {
     return false;
