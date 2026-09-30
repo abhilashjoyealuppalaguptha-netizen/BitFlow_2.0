@@ -11,8 +11,14 @@ const BACKEND_URL =
 export async function GET() {
   try {
     const res = await fetch(`${BACKEND_URL}/health`, { cache: "no-store" });
-    const data = await res.json();
-    return NextResponse.json(data);
+    const text = await res.text();
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { status: "unreachable", error: text.trim() || res.statusText };
+    }
+    return NextResponse.json(data, { status: res.status });
   } catch (err: any) {
     return NextResponse.json(
       { status: "unreachable", error: err?.message },

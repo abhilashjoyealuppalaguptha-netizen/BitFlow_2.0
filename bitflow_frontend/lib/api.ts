@@ -68,10 +68,18 @@ function normaliseError(err: unknown): Error {
       );
     }
 
-    // Backend returned a structured error envelope
+    // Backend returned a response body
     const data = axErr.response.data;
+    if (typeof data === "string" && data.includes("Too Many Requests")) {
+      return new Error("Rate limit reached. Please wait a few seconds before retrying.");
+    }
     if (data?.detail) return new Error(data.detail);
-    if (data?.error)  return new Error(data.error);
+    if (data?.error) {
+      if (typeof data.error === "string" && data.error.includes("Too Many Requests")) {
+        return new Error("Rate limit reached. Please wait a few seconds before retrying.");
+      }
+      return new Error(data.error);
+    }
 
     // 429 / 502 / 503 / 504 Gateway & Rate limit errors
     if (

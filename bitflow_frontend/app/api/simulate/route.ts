@@ -37,7 +37,14 @@ export async function POST(request: Request) {
       body: JSON.stringify(body),
     });
 
-    const data = await backendResponse.json();
+    const responseText = await backendResponse.text();
+    let data: any;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { error: responseText.trim() || backendResponse.statusText || "Backend error" };
+    }
+
     return NextResponse.json(data, { status: backendResponse.status });
   } catch (err: any) {
     console.error("[Simulate Proxy] Error:", err);
