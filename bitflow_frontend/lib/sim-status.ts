@@ -34,6 +34,20 @@ export function useSimStatus(): SimStatus {
 /** Did the simulator answer within the last minute? Then a health check would add nothing. */
 export const awakeRecently = () => Date.now() - lastOk < 60_000;
 
+/** Has the simulator answered recently enough that it should still be awake (not cold-starting)? */
+export const simulatorAwake = () => Date.now() - lastOk < AWAKE_FOR_MS;
+
+/**
+ * Should a failed simulation request be sent again? Outages (no response, 502, 503) are
+ * retried. A 504 is retried only when the simulator was asleep, since then it is a cold
+ * start; on an awake simulator it means a long simulation, and running it again would only
+ * repeat the same work. Everything else (4xx, 429 rate limits, 500) is final.
+ */
+export function shouldRetrySimulation(status: number | undefined, wasAwake: boolean): boolean {
+  if (status === undefined || status === 502 || status === 503) return true;
+  return status === 504 && !wasAwake;
+}
+
 /**
  * Start waking the simulator from a page that usually leads to an editor
  * (Learn, Arena), without the wake notice, so it gets a head start on its

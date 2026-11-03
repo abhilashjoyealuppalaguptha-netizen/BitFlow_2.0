@@ -13,7 +13,7 @@
 
 import axios, { AxiosError } from "axios";
 import type { SimulateRequest, SimulateResponse } from "./types";
-import { awakeRecently, trackWake } from "./sim-status";
+import { awakeRecently, shouldRetrySimulation, simulatorAwake, trackWake } from "./sim-status";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Axios instance
@@ -112,15 +112,15 @@ export async function runSimulation(
   payload: SimulateRequest,
   retries = 6
 ): Promise<SimulateResponse> {
+  const wasAwake = simulatorAwake();
   try {
     const { data } = await trackWake(apiClient.post<SimulateResponse>("", payload));
     return data;
   } catch (err) {
-    // Retry only real outages (connection dropped, server restarting: 502/503/504).
-    // Never retry 429 — each retry would count against the same rate-limit window.
+    // Retry only real outages and cold starts (lib/sim-status.ts shouldRetrySimulation):
+    // never a 504 from an awake simulator (a long run would just run again), never a 429.
     const isRetryable =
-      axios.isAxiosError(err) &&
-      (!err.response || (err.response.status && [502, 503, 504].includes(err.response.status)));
+      axios.isAxiosError(err) && shouldRetrySimulation(err.response?.status, wasAwake);
 
     if (isRetryable && retries > 0) {
       const delayMs = Math.min((7 - retries) * 3000, 10000); // 3s, 6s, 9s, 10s, 10s, 10s backoff
