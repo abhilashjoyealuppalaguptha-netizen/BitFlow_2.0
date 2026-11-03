@@ -8,13 +8,15 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Install system dependencies: curl (healthcheck), iverilog (simulation), verilator (lint),
-# yosys (synthesis, formal), z3 (formal solver), ghdl (VHDL), nextpnr-ice40 (place & route).
+# Install system dependencies: curl (healthcheck), iverilog (simulation), verilator (lint, and the
+# verification simulator in api/verilator_sim.py: it builds C++, so make), yosys (synthesis, formal),
+# z3 (formal solver, and Verilator's randomize() constraints), ghdl (VHDL), nextpnr-ice40 (place & route).
 # Place & route targets the HX8K only (api/routes/synthesize.py): the other chip databases (137 MB) go.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iverilog \
     verilator \
+    make \
     yosys \
     z3 \
     ghdl \

@@ -13,6 +13,7 @@ export interface SimulateBody {
   files?:      Record<string, string>;
   design_language?:    "verilog" | "vhdl";
   testbench_language?: "verilog" | "vhdl" | "python";
+  simulator?:          "icarus" | "verilator";
 }
 
 export type FormalMode = "bmc" | "prove" | "cover";

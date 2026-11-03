@@ -43,6 +43,33 @@ export interface SimulateRequest {
 
   /** Also run Verilator lint on design_v; findings are appended to stdout. */
   lint?: boolean;
+
+  /** Verilog testbenches: Icarus (default, fast) or Verilator with assertions + coverage (api/verilator_sim.py). */
+  simulator?: Simulator;
+}
+
+export type Simulator = "icarus" | "verilator";
+
+/** A failed SystemVerilog assertion (Verilator flow). time is in the testbench's time units. */
+export interface AssertionFailure {
+  time: number;
+  file: string;
+  line: number;
+  scope: string;
+  message: string;
+  severity: "error" | "warning";
+}
+
+export interface CoverageCount { hit: number; total: number; percent: number | null }
+
+/** Coverage of design.v from a Verilator run. */
+export interface Coverage {
+  summary: { line: CoverageCount; branch: CoverageCount; toggle: CoverageCount; user: CoverageCount };
+  /** file -> line -> hits */
+  lines: Record<string, Record<string, number>>;
+  branches: { file: string; line: number; side: string; hits: number }[];
+  toggles: { signal: string; file: string; line: number; hits: number }[];
+  covers: { file: string; line: number; name: string; hits: number }[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,6 +153,10 @@ export interface SimulateResponse {
    * Useful for correlating frontend actions with backend logs.
    */
   workspace_id: string;
+
+  /** Verilator flow only: failed assertions and design coverage. */
+  assertions?: AssertionFailure[];
+  coverage?: Coverage | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

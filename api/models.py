@@ -123,6 +123,11 @@ class SimulateJsonRequest(BaseModel):
         default="verilog",
         description="Language of testbench_v: Verilog, VHDL (needs a VHDL design) or a cocotb Python test module.",
     )
+    simulator: Literal["icarus", "verilator"] = Field(
+        default="icarus",
+        description="Verilog testbenches only: Icarus (fast, default) or Verilator 5 with SystemVerilog "
+                    "assertions, constrained random and coverage (api/verilator_sim.py).",
+    )
 
     @model_validator(mode="after")
     def _languages_match(self) -> "SimulateJsonRequest":
@@ -233,6 +238,16 @@ class SimulateResponse(BaseModel):
             "Short unique ID of the temporary workspace directory. "
             "Useful for correlating API logs with host-side tmpdir names."
         ),
+    )
+
+    # ── Verilator flow only ──────────────────────────────────────────────────
+    assertions: list[dict] = Field(
+        default_factory=list,
+        description="Failed SystemVerilog assertions: {time, file, line, scope, message, severity}.",
+    )
+    coverage: Optional[dict] = Field(
+        default=None,
+        description="Design coverage: {summary: {line|branch|toggle|user: {hit, total, percent}}, lines, toggles, covers}.",
     )
 
 

@@ -62,6 +62,7 @@ async def _execute_simulation(
     files: dict | None = None,
     design_language: str = "verilog",
     testbench_language: str = "verilog",
+    simulator: str = "icarus",
 ) -> SimulateResponse:
     """
     Core simulation pipeline shared by both endpoints.
@@ -88,7 +89,7 @@ async def _execute_simulation(
         t_queued = time.monotonic()
         async with _sim_slots:
             queue_ms = (time.monotonic() - t_queued) * 1000
-            result = await run_simulation(tmpdir, workspace_id, timeout, lint, design_language, testbench_language)
+            result = await run_simulation(tmpdir, workspace_id, timeout, lint, design_language, testbench_language, simulator)
 
         # Read the VCD file if the testbench produced one.
         vcd_base64, vcd_size = (None, 0)
@@ -121,6 +122,8 @@ async def _execute_simulation(
             ),
             duration_ms  = result.duration_ms,
             workspace_id = workspace_id,
+            assertions   = result.assertions,
+            coverage     = result.coverage,
         )
 
     finally:
@@ -183,7 +186,7 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
         raise InvalidSourceError("Python (cocotb) testbenches are disabled on this server.")
 
     return await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint, body.files,
-                                     body.design_language, body.testbench_language)
+                                     body.design_language, body.testbench_language, body.simulator)
 
 
 # =============================================================================

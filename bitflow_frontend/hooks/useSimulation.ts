@@ -18,7 +18,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { runSimulation, checkHealth } from "@/lib/api";
 import { parseVcd } from "@/lib/vcd-parser";
-import type { DesignLanguage, RunState, SimulateResponse, ParsedVcd, TestbenchLanguage } from "@/lib/types";
+import type { DesignLanguage, RunState, SimulateResponse, ParsedVcd, Simulator, TestbenchLanguage } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { combineDesign, dataFiles, relabelOutput, type ProjectFile } from "@/lib/project-files";
 
@@ -215,6 +215,9 @@ export interface UseSimulationReturn {
   setTestbenchLanguage: (l: TestbenchLanguage) => void;
   /** Replace both editors (and switch languages), e.g. from a template. */
   loadProject:          (p: SandboxProject) => void;
+  /** Verilog testbenches: Icarus (fast) or Verilator (assertions, coverage, constrained random). Remembered. */
+  simulator:            Simulator;
+  setSimulator:         (s: Simulator) => void;
 
   /** Design files after design.v (Verilog only), and what tools get: design.v with them appended. */
   extraFiles:           ProjectFile[];
@@ -250,6 +253,7 @@ export function useSimulation(): UseSimulationReturn {
   // Key names are stable strings; changing them clears stored values.
   const [designLanguage,    setDesignLang] = useLocalStorage<DesignLanguage>(DESIGN_LANGUAGE_KEY, "verilog");
   const [testbenchLanguage, setTbLang]     = useLocalStorage<TestbenchLanguage>(TESTBENCH_LANGUAGE_KEY, "verilog");
+  const [simulator,         setSimulator]  = useLocalStorage<Simulator>("bitflow_simulator", "icarus");
   const design = {
     verilog: useLocalStorage<string>(DESIGN_STORAGE_KEY, DEFAULT_DESIGN),
     vhdl:    useLocalStorage<string>("bitflow_design_vhdl", DEFAULT_DESIGN_VHDL),
@@ -323,6 +327,7 @@ export function useSimulation(): UseSimulationReturn {
         lint:        true,
         design_language:    designLanguage,
         testbench_language: testbenchLanguage,
+        ...(testbenchLanguage === "verilog" && simulator === "verilator" ? { simulator } : {}),
       });
 
       // Messages about the combined design.v point at the file they came from.
@@ -358,7 +363,7 @@ export function useSimulation(): UseSimulationReturn {
       setErrorMsg(message);
       setRunState("error");
     }
-  }, [runState, projectDesign, extraFiles, testbenchCode, designLanguage, testbenchLanguage]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [runState, projectDesign, extraFiles, testbenchCode, designLanguage, testbenchLanguage, simulator]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Reset the terminal panel to its idle state. */
   const clearResult = useCallback(() => {
@@ -378,6 +383,8 @@ export function useSimulation(): UseSimulationReturn {
     setDesignLanguage,
     setTestbenchLanguage,
     loadProject,
+    simulator,
+    setSimulator,
     extraFiles,
     setExtraFiles,
     projectDesign,

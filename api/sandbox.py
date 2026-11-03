@@ -23,7 +23,7 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from api.config import settings
@@ -50,6 +50,9 @@ class SandboxResult:
     stderr:       str
     duration_ms:  float
     workspace_id: str
+    # Verilator flow only (api/verilator_sim.py): failed assertions and coverage of the design.
+    assertions:   list = field(default_factory=list)
+    coverage:     Optional[dict] = None
 
 
 @dataclass
@@ -412,6 +415,7 @@ def _simulate_sync(
     lint: bool,
     design_language: str,
     testbench_language: str,
+    simulator: str = "icarus",
 ) -> SandboxResult:
     """Pick the flow: GHDL (VHDL testbench), cocotb (Python testbench) or Icarus.
     A VHDL design with any other testbench is first converted to Verilog."""
@@ -434,6 +438,11 @@ def _simulate_sync(
                                  ["--- Converting VHDL to Verilog (GHDL) ---", error, "[ERROR] Compilation failed."],
                                  t0, workspace_id)
         note = "[OK] VHDL design converted to Verilog (GHDL)\n"
+    if simulator == "verilator" and testbench_language == "verilog":
+        from api.verilator_sim import run_verilator_sync
+        result = run_verilator_sync(tmpdir, workspace_id, timeout)
+        result.stdout = note + result.stdout
+        return result
     result = (langs.run_cocotb_sync(tmpdir, workspace_id, timeout) if testbench_language == "python"
               else _run_simulation_sync(tmpdir, workspace_id, timeout, lint and design_language == "verilog"))
     result.stdout = note + result.stdout
@@ -451,6 +460,7 @@ async def run_simulation(
     lint: bool = False,
     design_language: str = "verilog",
     testbench_language: str = "verilog",
+    simulator: str = "icarus",
 ) -> SandboxResult:
     """
     Async entry-point for the route handlers.
@@ -476,5 +486,6 @@ async def run_simulation(
         lint,
         design_language,
         testbench_language,
+        simulator,
     )
     return result

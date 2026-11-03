@@ -82,7 +82,7 @@ import ProjectsMenu                   from "@/components/ProjectsMenu";
 import { setVerilogContext }          from "@/lib/verilog-monaco";
 import { parseDiagnostics }           from "@/lib/diagnostics";
 import { TEMPLATES }                  from "@/lib/templates";
-import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
+import type { Coverage, DesignLanguage, Simulator, TestbenchLanguage } from "@/lib/types";
 import ExportCard                     from "@/components/ExportCard";
 import AuthGate                       from "@/components/AuthGate";
 import { useSimulation }              from "@/hooks/useSimulation";
@@ -107,6 +107,7 @@ const Editor = dynamic(() => import("@/components/Editor"), {
 const FormalPanel = dynamic(() => import("@/components/FormalPanel"), { ssr: false });
 const BoardPanel = dynamic(() => import("@/components/BoardPanel"), { ssr: false });
 const SynthesisPanel = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
+const CoveragePanel = dynamic(() => import("@/components/CoveragePanel"), { ssr: false });
 const LabReport      = dynamic(() => import("@/components/LabReport"), { ssr: false });
 const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
@@ -313,6 +314,12 @@ const TESTBENCH_FILES: Record<TestbenchLanguage, [string, string]> = {
   verilog: ["tb.v", "systemverilog"], vhdl: ["tb.vhd", "vhdl"], python: ["test_tb.py", "python"],
 };
 
+/** The weakest of line and branch coverage: the honest single number for the Coverage button. */
+function lowestCoverage(c: Coverage | null | undefined): number | null {
+  const ps = [c?.summary.line.percent, c?.summary.branch.percent].filter((p): p is number => typeof p === "number");
+  return ps.length ? Math.min(...ps) : null;
+}
+
 /** Small native select for the editor languages (same look as the template menu). */
 function LanguageSelect<T extends string>({ label, value, options, onChange, disabled }: {
   label: string; value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean;
@@ -351,6 +358,8 @@ function SandboxContent() {
     testbenchLanguage,
     setDesignLanguage,
     setTestbenchLanguage,
+    simulator,
+    setSimulator,
     loadProject,
     extraFiles,
     setExtraFiles,
@@ -405,6 +414,7 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [coverageOpen, setCoverageOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
@@ -734,6 +744,16 @@ function SandboxContent() {
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"]]} onChange={setDesignLanguage} />
           <LanguageSelect<TestbenchLanguage> label="Testbench" value={testbenchLanguage} disabled={isRunning}
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"], ["python", "Python (cocotb)"]]} onChange={setTestbenchLanguage} />
+          {testbenchLanguage === "verilog" && (
+            <LanguageSelect<Simulator> label="Simulator" value={simulator} disabled={isRunning}
+              options={[["icarus", "Icarus (fast)"], ["verilator", "Verilator: assertions + coverage"]]} onChange={setSimulator} />
+          )}
+          {(result?.coverage || (result?.assertions?.length ?? 0) > 0) && (
+            <button onClick={() => setCoverageOpen(true)} title="Coverage and assertion results of the last Verilator run"
+              className={`h-6 px-2 rounded border font-mono text-[10px] ${(result?.assertions?.length ?? 0) > 0 ? "border-danger/50 text-danger" : "border-phosphor/40 text-phosphor"} hover:bg-phosphor/10`}>
+              Coverage{lowestCoverage(result?.coverage) !== null ? ` ${lowestCoverage(result?.coverage)}%` : ""}
+            </button>
+          )}
           {/* Last submission metadata — shown when a prior successful run exists */}
           {lastSubmission && (
             <span
@@ -933,6 +953,7 @@ function SandboxContent() {
        * survives open/close cycles.
        */}
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
+      <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
       {reportOpen && (
         <LabReport onClose={() => setReportOpen(false)} result={result} parsedVcd={parsedVcd} viewKey="/sandbox" synthDesign={projectDesign}
                    files={[{ name: DESIGN_FILES[designLanguage][0], content: designCode }, { name: TESTBENCH_FILES[testbenchLanguage][0], content: testbenchCode }, ...extraFiles]} />
