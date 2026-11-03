@@ -23,7 +23,7 @@ import time
 from api.models import SandboxExitCode, exit_code_to_status
 from api.sandbox import SandboxResult, _run_limited, first_compile_error
 
-BUILD_TIMEOUT_SECONDS = 90
+BUILD_TIMEOUT_SECONDS = 150   # Render's free instance needs ~45 s; a 4-vCPU server ~5 s
 ERROR_LIMIT = 1000           # keep going after failed assertions so all are reported
 MAX_ASSERTIONS = 50
 DESIGN_FILES = ("design.v",)
@@ -99,23 +99,72 @@ def _result(code: int, out: list[str], t0: float, workspace_id: str,
     )
 
 
+# Two steps, the same for live runs and for the runtime prebuilt into the image:
+#   1. verilator generates C++ (GENERATE)   2. make compiles it (MAKE)
+# Between them the prebuilt runtime objects are copied in. Verilator's makefile makes them depend
+# on the generated Vsim.mk, so they must be copied after step 1 to count as up to date.
+GENERATE = ["verilator", "--cc", "--exe", "--main", "--timing", "--assert", "--coverage", "--trace",
+            "-CFLAGS", "-O0", "-Wno-fatal", "-Wno-lint", "-Wno-style",
+            "--prefix", "Vsim", "--Mdir", "obj_dir", "-o", "sim"]
+MAKE = ["make", "-C", "obj_dir", "-f", "Vsim.mk", "-j", "2"]
+RUNTIME_DIR = "/opt/verilator-runtime"   # verilated*.o, built once by Dockerfile.api
+
+
+def prebuild_runtime(dest: str = RUNTIME_DIR) -> None:
+    """Build Verilator's runtime library (the same for every design) once, at image build time,
+    so each run only compiles the student's model."""
+    import shutil
+    import tempfile
+    work = tempfile.mkdtemp()
+    with open(os.path.join(work, "design.v"), "w") as f:
+        f.write("module m(input logic a, output logic y); assign y = a; endmodule\n")
+    with open(os.path.join(work, "tb.v"), "w") as f:
+        f.write("module tb; logic a = 0, y; m dut(.*); initial begin #1 a = 1; #1 $finish; end endmodule\n")
+    subprocess.run([*GENERATE, "design.v", "tb.v"], cwd=work, check=True, capture_output=True)
+    subprocess.run(MAKE, cwd=work, check=True, capture_output=True)
+    os.makedirs(dest, exist_ok=True)
+    for name in os.listdir(os.path.join(work, "obj_dir")):
+        if name.startswith("verilated") and name.endswith(".o"):
+            shutil.copy2(os.path.join(work, "obj_dir", name), dest)
+    shutil.rmtree(work, ignore_errors=True)
+
+
+def _seed_runtime(tmpdir: str) -> None:
+    """Copy the prebuilt runtime objects into obj_dir (after GENERATE): make then skips them."""
+    obj = os.path.join(tmpdir, "obj_dir")
+    if not (os.path.isdir(RUNTIME_DIR) and os.path.isdir(obj)):
+        return
+    import shutil
+    owner = os.stat(obj)
+    for name in os.listdir(RUNTIME_DIR):
+        path = os.path.join(obj, name)
+        shutil.copyfile(os.path.join(RUNTIME_DIR, name), path)   # fresh mtime: newer than Vsim.mk
+        if os.name == "posix" and os.geteuid() == 0:   # the sandbox user owns the build
+            os.chown(path, owner.st_uid, owner.st_gid)
+
+
+def _clean(text: str, tmpdir: str) -> str:
+    """Keep diagnostics, drop make/g++ chatter; workspace-relative paths."""
+    return "\n".join(l for l in text.replace(tmpdir + os.sep, "").splitlines()
+                     if l.startswith("%") or "error" in l.lower())
+
+
 def run_verilator_sync(tmpdir: str, workspace_id: str, timeout: int) -> SandboxResult:
     t0 = time.monotonic()
     out = ["--- Building with Verilator (assertions, coverage, constrained random) ---"]
+    build = ""
     try:
-        rc, build = _run_limited(
-            ["verilator", "--binary", "--timing", "--assert", "--coverage", "--trace",
-             "-CFLAGS", "-O0", "-j", "2", "-Wno-fatal", "-Wno-lint", "-Wno-style",
-             "--Mdir", "obj_dir", "-o", "sim", "design.v", "tb.v"],
-            cwd=tmpdir, timeout=BUILD_TIMEOUT_SECONDS,
-        )
+        rc, gen = _run_limited([*GENERATE, "design.v", "tb.v"], cwd=tmpdir, timeout=BUILD_TIMEOUT_SECONDS)
+        build = _clean(gen, tmpdir)
+        if rc == 0:
+            _seed_runtime(tmpdir)
+            rc, made = _run_limited(MAKE, cwd=tmpdir, timeout=BUILD_TIMEOUT_SECONDS)
+            build = "\n".join(x for x in (build, _clean(made, tmpdir)) if x)
     except subprocess.TimeoutExpired:
         return _result(SandboxExitCode.INTERNAL_ERROR, out + [f"[ERROR] Build exceeded {BUILD_TIMEOUT_SECONDS}s."], t0, workspace_id)
     except FileNotFoundError:
         return _result(SandboxExitCode.INTERNAL_ERROR, out + ["[ERROR] Verilator is not installed on the server."], t0, workspace_id)
 
-    build = "\n".join(l for l in build.replace(tmpdir + os.sep, "").splitlines()
-                      if l.startswith("%") or "error" in l.lower())   # drop make/g++ chatter, keep diagnostics
     if build:
         out.append(build)
     if rc != 0 or not os.path.exists(os.path.join(tmpdir, "obj_dir", "sim")):

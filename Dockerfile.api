@@ -48,6 +48,11 @@ RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/en
 # Copy the API source code
 COPY api/ /app/api/
 
+# Verilator's runtime library is the same for every design: build it once here so each
+# verification run only compiles the student's model (api/verilator_sim.py prebuild_runtime).
+RUN cd /app && JWT_SECRET=image-build-placeholder-never-used-at-runtime python -c "from api.verilator_sim import prebuild_runtime; prebuild_runtime()" \
+    && ls /opt/verilator-runtime
+
 # Copy the environment file to working directory root if it exists
 RUN cp /app/api/.env /app/.env || true
 
