@@ -60,18 +60,36 @@ interface EditorProps {
 }
 
 const LINT_DELAY_MS = 1200;
-const STYLE_DELAY_MS = 2500;   // Verible style lint runs on the server, so it waits for a longer pause
+const STYLE_DELAY_MS = 4000;   // Verible style lint runs on the server, so it waits for a longer pause
+
+type StyleIssue = { line: number; col: number; endCol: number | null; rule: string; severity: string; message: string };
+
+// Verible results by language + text: undo, switching files or resetting to the starter code
+// shows the earlier result instead of asking the server again. Oldest entries go first.
+const STYLE_CACHE_SIZE = 50;
+const styleCache = new Map<string, StyleIssue[]>();
 
 /** Server-side Verible (app/api/style). Style issues only: Yosys above already reports syntax errors. */
-async function styleIssues(source: string, language: string) {
+async function styleIssues(source: string, language: string): Promise<StyleIssue[] | null> {
+  const key = `${language}\0${source}`;
+  const cached = styleCache.get(key);
+  if (cached) return cached;
+  const issues = await fetchStyleIssues(source, language);
+  if (issues) {
+    styleCache.set(key, issues);
+    if (styleCache.size > STYLE_CACHE_SIZE) styleCache.delete(styleCache.keys().next().value!);
+  }
+  return issues;
+}
+
+async function fetchStyleIssues(source: string, language: string): Promise<StyleIssue[] | null> {
   try {
     const res = await fetch("/api/style", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "lint", files: [{ name: language === "systemverilog" ? "design.sv" : "design.v", content: source }] }),
     });
     const data = await res.json();
-    return data?.ok ? (data.issues as { line: number; col: number; endCol: number | null; rule: string; severity: string; message: string }[])
-      .filter((i) => i.severity !== "error") : null;
+    return data?.ok ? (data.issues as StyleIssue[]).filter((i) => i.severity !== "error") : null;
   } catch { return null; }
 }
 
@@ -344,7 +362,7 @@ export default function Editor({
           endLineNumber: line, endColumn: i.endCol ? i.endCol + 1 : model.getLineMaxColumn(line),
         };
       }));
-    }, STYLE_DELAY_MS);
+    }, styleCache.has(`${language}\0${value}`) ? 0 : STYLE_DELAY_MS); // a known result shows at once
     return () => clearTimeout(t);
   }, [value, lint, language]);
 
