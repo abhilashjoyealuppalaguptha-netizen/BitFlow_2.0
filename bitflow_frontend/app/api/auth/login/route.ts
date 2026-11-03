@@ -23,14 +23,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!normalizedUsername || !password || !role) {
+    if (!normalizedUsername || !password) {
       return NextResponse.json(
-        { error: "Username, password, and role are required." },
+        { error: "Username and password are required." },
         { status: 400 }
       );
     }
 
-    if (role !== "STUDENT" && role !== "ADMIN") {
+    // Optional: the sign-in form no longer sends it (the account's own role decides where it lands).
+    if (role !== undefined && role !== "STUDENT" && role !== "ADMIN") {
       return NextResponse.json(
         { error: "Invalid role specified." },
         { status: 400 }

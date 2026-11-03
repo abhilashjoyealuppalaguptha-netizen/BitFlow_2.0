@@ -18,12 +18,15 @@ interface UserProfile {
 /** Extra sign-up fields: month/year of birth and acceptance of the privacy notice. */
 export interface ConsentFields { birthYear?: number; birthMonth?: number; consent?: boolean }
 
+/** Sign-in/sign-up result. The caller decides where to go next (by user.role). */
+export interface AuthResult { error?: string; user?: UserProfile }
+
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  login: (username: string, password: string, role: "STUDENT" | "ADMIN") => Promise<{ error?: string }>;
+  login: (username: string, password: string) => Promise<AuthResult>;
   register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string,
-             botFields?: { formToken: string; website: string }, consent?: ConsentFields) => Promise<{ error?: string }>;
+             botFields?: { formToken: string; website: string }, consent?: ConsentFields) => Promise<AuthResult>;
   logout: () => Promise<void>;
   checkSession: () => Promise<void>;
 }
@@ -57,24 +60,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkSession();
   }, [checkSession]);
 
-  // Auth Guard / Redirection logic
-// Auth Guard / Redirection logic
-// Auth Guard / Redirection logic
-
-
-  const login = async (username: string, password: string, role: "STUDENT" | "ADMIN") => {
+  const login = async (username: string, password: string): Promise<AuthResult> => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
         void checkSession();   // picks up the privacy flags
-        router.push("/");
-        return {};
+        return { user: data.user };
       } else {
         return { error: data.error || "Login failed" };
       }
@@ -90,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     secretPassword?: string,
     botFields?: { formToken: string; website: string },
     consent?: ConsentFields
-  ) => {
+  ): Promise<AuthResult> => {
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -101,9 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok && data.user) {
         setUser(data.user);
         void checkSession();   // picks up the privacy flags
-        // A minor goes to the dashboard, which shows the parent link to share.
-        router.push(data.guardianPending ? "/dashboard" : "/");
-        return {};
+        return { user: data.user };
       } else {
         return { error: data.error || "Registration failed" };
       }

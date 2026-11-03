@@ -17,8 +17,8 @@ async function quiet(page: Page) {
 async function signIn(page: Page, register: boolean) {
   await page.goto("/login?next=/sandbox", { waitUntil: "networkidle" });
   if (register) {
-    await page.getByText("Need a new account? Register here").click();
-    await expect(page.getByText("Already registered? Sign in here")).toBeVisible();
+    await page.getByRole("link", { name: "Register", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   }
   await page.getByPlaceholder("e.g. system_operator").fill(username);
   await page.getByPlaceholder("••••••••").first().fill(password);
