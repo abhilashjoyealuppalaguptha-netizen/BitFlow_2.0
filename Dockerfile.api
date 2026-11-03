@@ -23,6 +23,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && find /usr/share/nextpnr/ice40 -name 'chipdb-*.bin' ! -name 'chipdb-8k.bin' -delete
 
+# Verible (chipsalliance): SystemVerilog style lint + formatter for api/routes/style.py.
+# Pinned release, checked against its published sha256; only the two tools are kept.
+ARG VERIBLE_VERSION=v0.0-4296-g0f262651
+ARG VERIBLE_SHA256=8569defb891d2316067613ea00442af28a7a09d405d95b54c0c91f9942d26635
+RUN curl -fsSL -o /tmp/verible.tgz \
+      "https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz" \
+    && echo "${VERIBLE_SHA256}  /tmp/verible.tgz" | sha256sum -c - \
+    && tar -xzf /tmp/verible.tgz -C /tmp \
+    && install -m 755 /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-lint \
+                      /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-format /usr/local/bin/ \
+    && rm -rf /tmp/verible.tgz /tmp/verible-${VERIBLE_VERSION}
+
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

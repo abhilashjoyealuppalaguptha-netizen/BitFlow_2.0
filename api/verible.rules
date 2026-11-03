@@ -1,0 +1,16 @@
+# api/verible.rules — Verible lint rules for BitFlow (api/routes/style.py).
+# Verible's defaults follow the lowRISC/Google SystemVerilog style guides; this file
+# adjusts them for a browser IDE. One rule per line: -name off, +name on, +name=k:v.
+
+# The sandbox names files design.v / tb.v, so file-name rules would always fire.
+-module-filename
+-package-filename
+# Editor buffers rarely end in a newline; not worth a warning on every file.
+-posix-eof
+
+# Off by default in Verible, on here: they catch real bugs or are industry norms.
++signal-name-style
++suspicious-semicolon
++mismatched-labels
++instance-shadowing
++forbid-negative-array-dim

@@ -16,6 +16,13 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog verilator yosys z3 ghdl nextpnr-ice40
+      - name: Verible (same pinned release as Dockerfile.api)
+        run: |
+          V=v0.0-4296-g0f262651
+          curl -fsSL -o /tmp/verible.tgz "https://github.com/chipsalliance/verible/releases/download/$V/verible-$V-linux-static-x86_64.tar.gz"
+          echo "8569defb891d2316067613ea00442af28a7a09d405d95b54c0c91f9942d26635  /tmp/verible.tgz" | sha256sum -c -
+          tar -xzf /tmp/verible.tgz -C /tmp
+          sudo install -m 755 /tmp/verible-$V/bin/verible-verilog-lint /tmp/verible-$V/bin/verible-verilog-format /usr/local/bin/
       - run: pip install -r requirements.txt
       - run: python -m pytest tests -q
 

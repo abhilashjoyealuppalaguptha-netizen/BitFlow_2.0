@@ -30,6 +30,7 @@ from api.exceptions import VerilogSandboxError, sandbox_error_handler, unhandled
 from api.routes.hdl import formal_router, vhdl_router
 from api.routes.health import router as health_router
 from api.routes.simulate import router as simulate_router
+from api.routes.style import router as style_router
 from api.routes.synthesize import board_router, equivalence_router, fpga_router, metrics_router, router as synthesize_router
 from api.utils import configure_logging
 
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(equivalence_router)  # POST /equivalence
     app.include_router(metrics_router)  # POST /metrics
     app.include_router(board_router)  # POST /board
+    app.include_router(style_router)  # POST /style/lint, POST /style/format
     app.include_router(fpga_router)  # POST /fpga
     app.include_router(vhdl_router)  # POST /vhdl
     app.include_router(formal_router)  # POST /formal

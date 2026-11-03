@@ -75,6 +75,11 @@ export function synthesizeOnBackend(design_v: string): Promise<{ status: number;
   return postToBackend("/synthesize", { design_v });
 }
 
+/** POST /style/lint or /style/format (Verible) on the backend. */
+export function styleOnBackend(action: "lint" | "format", body: unknown): Promise<{ status: number; data: any }> {
+  return postToBackend(`/style/${action}`, body);
+}
+
 async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
   const res = await fetch(`${backendUrl()}${path}`, {
     method: "POST",

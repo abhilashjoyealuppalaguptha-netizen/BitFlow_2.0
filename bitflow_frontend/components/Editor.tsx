@@ -60,6 +60,49 @@ interface EditorProps {
 }
 
 const LINT_DELAY_MS = 1200;
+const STYLE_DELAY_MS = 2500;   // Verible style lint runs on the server, so it waits for a longer pause
+
+/** Server-side Verible (app/api/style). Style issues only: Yosys above already reports syntax errors. */
+async function styleIssues(source: string, language: string) {
+  try {
+    const res = await fetch("/api/style", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "lint", files: [{ name: language === "systemverilog" ? "design.sv" : "design.v", content: source }] }),
+    });
+    const data = await res.json();
+    return data?.ok ? (data.issues as { line: number; col: number; endCol: number | null; rule: string; severity: string; message: string }[])
+      .filter((i) => i.severity !== "error") : null;
+  } catch { return null; }
+}
+
+/** Shift+Alt+F / "Format Document": Verible's formatter, registered once per Verilog language. */
+let formatterRegistered = false;
+function registerFormatter(monaco: Parameters<BeforeMount>[0]) {
+  if (formatterRegistered) return;
+  formatterRegistered = true;
+  for (const lang of VERILOG_LANGUAGES) {
+    monaco.languages.registerDocumentFormattingEditProvider(lang, {
+      async provideDocumentFormattingEdits(model) {
+        try {
+          const res = await fetch("/api/style", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "format", source: model.getValue(), name: lang === "systemverilog" ? "design.sv" : "design.v" }),
+          });
+          const data = await res.json();
+          if (!data?.ok || typeof data.formatted !== "string") {
+            monaco.editor.setModelMarkers(model, "bitflow-format", [{
+              severity: monaco.MarkerSeverity.Info, message: data?.error ?? "Couldn't format right now.", source: "Format",
+              startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: model.getLineMaxColumn(1),
+            }]);
+            return [];
+          }
+          monaco.editor.setModelMarkers(model, "bitflow-format", []);
+          return [{ range: model.getFullModelRange(), text: data.formatted }];
+        } catch { return []; }
+      },
+    });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Custom theme definition
@@ -284,6 +327,27 @@ export default function Editor({
     return () => clearTimeout(t);
   }, [value, lint, language]);
 
+  // Industry style (Verible): naming, always_comb/always_ff, default cases… shown as blue "info" squiggles.
+  useEffect(() => {
+    const monaco = monacoRef.current, model = editorRef.current?.getModel();
+    if (!monaco || !model) return;
+    if (!lint || !VERILOG_LANGUAGES.includes(language) || !value.trim()) { monaco.editor.setModelMarkers(model, "bitflow-style", []); return; }
+    const t = setTimeout(async () => {
+      const issues = await styleIssues(value, language);
+      if (!issues || model.isDisposed() || model.getValue() !== value) return;
+      const lines = model.getLineCount();
+      monaco.editor.setModelMarkers(model, "bitflow-style", issues.map((i) => {
+        const line = Math.min(Math.max(i.line, 1), lines);
+        return {
+          severity: monaco.MarkerSeverity.Info, message: `${i.message} [${i.rule}]`, source: "Verible style",
+          startLineNumber: line, startColumn: Math.max(i.col, 1),
+          endLineNumber: line, endColumn: i.endCol ? i.endCol + 1 : model.getLineMaxColumn(line),
+        };
+      }));
+    }, STYLE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [value, lint, language]);
+
   /** Store the editor instance so we can call methods on it if needed. */
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -293,22 +357,35 @@ export default function Editor({
     applyMarkers();
   }, [applyMarkers]);
 
+  const canFormat = VERILOG_LANGUAGES.includes(language) && !readOnly;
   return (
-    <MonacoEditor
-      height="100%"
-      language={language}
-      value={value}
-      theme="phosphor-dark"
-      loading={<EditorSkeleton />}
-      beforeMount={(monaco) => { defineTheme(monaco); registerVerilog(monaco); }}
-      onMount={handleMount}
-      onChange={(val) => onChange(val ?? "")}
-      options={{
-        ...EDITOR_OPTIONS,
-        readOnly,
-        // Dim the editor slightly when read-only to signal "busy"
-        ...(readOnly && { opacity: "0.7" }),
-      }}
-    />
+    <div className="relative h-full">
+      <MonacoEditor
+        height="100%"
+        language={language}
+        value={value}
+        theme="phosphor-dark"
+        loading={<EditorSkeleton />}
+        beforeMount={(monaco) => { defineTheme(monaco); registerVerilog(monaco); registerFormatter(monaco); }}
+        onMount={handleMount}
+        onChange={(val) => onChange(val ?? "")}
+        options={{
+          ...EDITOR_OPTIONS,
+          readOnly,
+          // Dim the editor slightly when read-only to signal "busy"
+          ...(readOnly && { opacity: "0.7" }),
+        }}
+      />
+      {canFormat && (
+        <button
+          type="button"
+          onClick={() => editorRef.current?.getAction("editor.action.formatDocument")?.run()}
+          title="Format with Verible (Shift+Alt+F)"
+          className="absolute top-2 right-4 z-10 px-2 py-0.5 rounded border border-rim bg-pit/90 text-[10px] font-mono text-ghost hover:text-phosphor hover:border-phosphor/50 transition-colors"
+        >
+          Format
+        </button>
+      )}
+    </div>
   );
 }
