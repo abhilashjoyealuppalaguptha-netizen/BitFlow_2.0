@@ -8,6 +8,8 @@
 
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse, TestbenchLanguage } from "@/lib/types";
+import { createHash } from "node:crypto";
+import { unstable_cache } from "next/cache";
 import { equivalenceOnBackend, formalOnBackend, fpgaOnBackend, simulateOnBackend } from "@/lib/backend";
 import { parseVcd, type ParsedVcd, type VcdSignal } from "@/lib/vcd-parser";
 import { generateMutants, parseMutants, pickMutants, type Mutant } from "@/lib/mutants";
@@ -555,6 +557,33 @@ export function mismatchRanges(
 }
 
 /**
+ * The reference solution's DUT waveform on a test. It is the same for every learner, so it
+ * is kept in Next's data cache, keyed by the exact sources: editing the problem's reference,
+ * testbench or data files gives a new key. A null (no waveform, or a failed run) is not
+ * stored. Outside a Next request (scripts) the cache is unavailable and the run is direct.
+ */
+async function referenceWaveform(reference: string, testbench: string, files: Record<string, string> | null): Promise<ParsedVcd | null> {
+  const key = createHash("sha256").update(JSON.stringify([reference, testbench, files])).digest("hex");
+  let ran = false;
+  const cached = unstable_cache(
+    async () => {
+      ran = true;
+      const w = await dutWaveform(reference, testbench, files);
+      if (!w) throw new Error("no reference waveform"); // thrown results are never cached
+      return w;
+    },
+    ["ref-waveform", key],
+    { revalidate: 7 * 24 * 3600, tags: ["ref-waveform"] },
+  );
+  try {
+    return await cached();
+  } catch (err) {
+    if (ran) return null;                         // the run itself failed: don't repeat it
+    return dutWaveform(reference, testbench, files); // no Next cache here (e.g. a script)
+  }
+}
+
+/**
  * DUT-only waveform for the first failing test, or null if unavailable. With a
  * stored reference solution, the expected outputs are run on the same test and
  * shown next to the learner's (outputs only — the reference's internals and
@@ -574,7 +603,7 @@ export async function failingTestWaveform(
   try {
     const [waveform, reference] = await Promise.all([
       dutWaveform(designCode, testbench, files),
-      q.referenceSolution ? dutWaveform(q.referenceSolution, testbench, files).catch(() => null) : null,
+      q.referenceSolution ? referenceWaveform(q.referenceSolution, testbench, files).catch(() => null) : null,
     ]);
     if (!waveform) return null;
     const changes = waveform.signals.reduce((n, s) => n + s.changes.length, 0);
