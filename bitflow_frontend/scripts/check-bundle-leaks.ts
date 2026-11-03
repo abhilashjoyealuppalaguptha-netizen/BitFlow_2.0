@@ -19,7 +19,7 @@ const PATTERNS: [string, RegExp][] = [
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
 ];
 // Server secrets: their values (when set here, e.g. in CI or the local stack) must not be shipped.
-const SECRETS = ["JWT_SECRET", "ADMIN_SECRET", "DATABASE_URL", "BACKEND_URL", "CRON_SECRET", "ANTHROPIC_API_KEY"]
+const SECRETS = ["JWT_SECRET", "ADMIN_SECRET", "DATABASE_URL", "BACKEND_URL", "BACKEND_URLS", "CRON_SECRET", "ANTHROPIC_API_KEY"]
   .map((k) => [k, process.env[k] ?? ""] as const)
   .filter(([, v]) => v.length >= 8);
 

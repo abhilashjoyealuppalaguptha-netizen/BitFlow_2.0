@@ -1,8 +1,9 @@
 /**
- * lib/sim-status.ts — is the simulator (Render free instance, sleeps after
+ * lib/sim-status.ts — is the simulator (Render free instance(s), sleep after
  * ~15 min idle) awake? Requests to it go through trackWake(); if one takes a
  * while and the simulator hasn't answered recently, the status turns "waking"
- * and components/SimulatorWakeNotice.tsx explains the wait.
+ * and components/SimulatorWakeNotice.tsx explains the wait. With several instances
+ * (BACKEND_URLS), the health check behind prewarmSimulator() wakes all of them.
  */
 
 import { useSyncExternalStore } from "react";

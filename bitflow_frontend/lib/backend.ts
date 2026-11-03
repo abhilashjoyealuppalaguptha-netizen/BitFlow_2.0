@@ -28,6 +28,42 @@ export function backendUrl(): string {
   return "http://127.0.0.1:8000";
 }
 
+/**
+ * Every simulator instance to spread requests over. BACKEND_URLS (comma-separated) lists
+ * several identical deployments, e.g. two free Render services; otherwise it is just
+ * backendUrl(). The API is stateless, so any instance can serve any request.
+ */
+export function backendUrls(): string[] {
+  const urls = (process.env.BACKEND_URLS ?? "")
+    .split(",")
+    .map((u) => u.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return urls.length ? urls : [backendUrl().replace(/\/+$/, "")];
+}
+
+// 502/503 come from the host while an instance deploys or fails to wake: another instance can
+// take the request. A 504 or any other answer is final; a 504 may be a long simulation, and
+// running it again elsewhere would double the work.
+const TRY_NEXT = new Set([502, 503]);
+
+/**
+ * fetch(`${url}${path}`) on the instances in turn, starting at a random one: move on when the
+ * request throws or answers 502/503. The last instance's answer (or error) is final.
+ */
+export async function fetchWithFailover(urls: string[], path: string, init?: RequestInit): Promise<Response> {
+  if (!urls.length) throw new Error("No backend URL");
+  const start = Math.floor(Math.random() * urls.length);
+  for (let i = 0; ; i++) {
+    const isLast = i === urls.length - 1;
+    try {
+      const res = await fetch(`${urls[(start + i) % urls.length]}${path}`, init);
+      if (isLast || !TRY_NEXT.has(res.status)) return res;
+    } catch (err) {
+      if (isLast) throw err;
+    }
+  }
+}
+
 /** POST /simulate on the backend. Returns the HTTP status and parsed body. */
 export function simulateOnBackend(body: SimulateBody): Promise<{ status: number; data: any }> {
   return postToBackend("/simulate", body);
@@ -82,7 +118,7 @@ export function styleOnBackend(action: "lint" | "format", body: unknown): Promis
 }
 
 async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
-  const res = await fetch(`${backendUrl()}${path}`, {
+  const res = await fetchWithFailover(backendUrls(), path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -55,6 +55,7 @@
     "check-projects": "tsx scripts/projects.check.ts",
     "check-verilog-lang": "tsx scripts/verilog-lang.check.ts",
     "check-leaks": "tsx scripts/check-bundle-leaks.ts",
+    "check-backend-pool": "tsx scripts/backend-pool.check.ts",
     "check-lab": "tsx scripts/lab.check.ts",
     "check-hardware": "tsx scripts/hardware.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
