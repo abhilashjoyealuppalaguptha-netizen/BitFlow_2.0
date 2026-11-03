@@ -25,7 +25,8 @@ const CONFIG: Record<Provider, { authorize: string; token: string; scope: string
 };
 
 function credentials(p: Provider) {
-  const id = process.env[`${CONFIG[p].env}_CLIENT_ID`], secret = process.env[`${CONFIG[p].env}_CLIENT_SECRET`];
+  // trim: a value pasted into the Vercel dashboard easily brings a trailing space or newline along
+  const id = process.env[`${CONFIG[p].env}_CLIENT_ID`]?.trim(), secret = process.env[`${CONFIG[p].env}_CLIENT_SECRET`]?.trim();
   return id && secret ? { id, secret } : null;
 }
 export const enabledProviders = () => PROVIDERS.filter((p) => credentials(p));
