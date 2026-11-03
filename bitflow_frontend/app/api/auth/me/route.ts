@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-utils";
+import { prisma } from "@/lib/prisma";
+import { hasPassword } from "@/lib/oauth";
 import { reportError } from "@/lib/error-log";
 import { canUseAi, guardianPending, isMinor, needsConsent } from "@/lib/privacy";
 
@@ -10,9 +12,15 @@ export async function GET() {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ user: null });
+    // For the profile's Connected accounts (components/AccountSecurity.tsx).
+    const login = await prisma.user.findUnique({
+      where: { id: user.id }, select: { password: true, oauthAccounts: { select: { provider: true } } },
+    });
     return NextResponse.json({
       user: {
         ...user,
+        oauth:           login?.oauthAccounts.map((a) => a.provider) ?? [],
+        hasPassword:     login ? hasPassword(login.password) : true,
         minor:           isMinor(user),
         needsConsent:    needsConsent(user),
         guardianPending: guardianPending(user),

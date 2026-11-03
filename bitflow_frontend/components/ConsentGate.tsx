@@ -15,16 +15,20 @@ import ConsentFields, { type ConsentValue } from "@/components/ConsentFields";
 export default function ConsentGate() {
   const { user, checkSession, logout } = useAuth();
   const [value, setValue] = useState<ConsentValue>({ consent: false });
+  const [username, setUsername] = useState<string | null>(null);   // null: not edited, show the suggestion
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (!user?.needsConsent) return null;
   const askBirth = !(user as { birthYear?: number | null }).birthYear;
+  const askName = !!user.usernamePending;   // made by Google/GitHub sign-in
+  const name = username ?? user.username;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      const res = await fetch("/api/privacy/consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+      const body = askName ? { ...value, username: name } : value;
+      const res = await fetch("/api/privacy/consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) setError(data.error ?? "That didn't work. Please try again.");
       else await checkSession();
@@ -32,9 +36,22 @@ export default function ConsentGate() {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="consent-title" className="fixed inset-0 z-[100] bg-void/90 backdrop-blur flex items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-md rounded-xl border border-rim bg-pit p-5 space-y-4 font-mono">
-        <h2 id="consent-title" className="text-[15px] font-bold text-bright">Our privacy notice</h2>
+    <div role="dialog" aria-modal="true" aria-labelledby="consent-title" className="fixed inset-0 z-[100] bg-void/90 backdrop-blur overflow-y-auto flex p-4">
+      {/* m-auto centres it when it fits and lets the overlay scroll when it doesn't (short screens) */}
+      <form onSubmit={submit} className="m-auto w-full max-w-md rounded-xl border border-rim bg-pit p-5 space-y-4 font-mono">
+        <h2 id="consent-title" className="text-[15px] font-bold text-bright">{askName ? "Welcome to BitFlow" : "Our privacy notice"}</h2>
+        {askName && (
+          <div>
+            <label htmlFor="consent-username" className="block text-[12px] text-pale mb-1">Choose your username</label>
+            <input
+              id="consent-username" type="text" required minLength={3} maxLength={24} autoComplete="username"
+              pattern="(?:[A-Za-z0-9_.]|-){3,24}" title="3–24 characters: letters, numbers, dots, dashes and underscores"
+              value={name} onChange={(e) => setUsername(e.target.value)}
+              className="w-full bg-void border border-rim rounded-lg px-3 py-2 text-[13px] text-bright focus:outline-none focus:border-phosphor"
+            />
+            <p className="text-[11px] text-dim mt-1">Shown on the leaderboard and to your classes. You can&apos;t change it later.</p>
+          </div>
+        )}
         <p className="text-[12px] text-ghost leading-relaxed">
           India&apos;s Digital Personal Data Protection Act asks us to tell you what we keep and why, and to get your agreement.
           Please read the <Link href="/privacy" target="_blank" className="text-phosphor hover:underline">privacy notice</Link>

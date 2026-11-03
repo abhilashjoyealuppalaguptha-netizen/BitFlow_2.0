@@ -114,7 +114,7 @@ export async function getSessionUser() {
     select: {
       expiresAt: true,
       // The privacy fields drive safe mode for minors and the consent prompt (lib/privacy.ts).
-      user: { select: { id: true, username: true, role: true, createdAt: true, bannedAt: true, ...PRIVACY_SELECT } },
+      user: { select: { id: true, username: true, role: true, createdAt: true, bannedAt: true, usernamePending: true, ...PRIVACY_SELECT } },
     },
   });
   if (!session || session.expiresAt < new Date() || session.user.bannedAt) return null;

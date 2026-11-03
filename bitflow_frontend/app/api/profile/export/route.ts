@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks] = await Promise.all([
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks, oauth] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
       username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
@@ -46,6 +46,7 @@ export async function GET(request: Request) {
     prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
     prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
     prisma.mockInterview.findMany({ where: { userId: id }, orderBy: { startedAt: "asc" }, select: { problems: true, startedAt: true, endsAt: true, finishedAt: true } }),
+    prisma.oAuthAccount.findMany({ where: { userId: id }, select: { provider: true, providerAccountId: true, createdAt: true } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
   await audit(id, "data.exported", id);
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
     exportedAt: new Date().toISOString(),
     site: "bitflowvlsi.tech",
     account,
+    connectedAccounts: oauth,   // Google/GitHub sign-in: only the provider's account id is kept
     privacy: { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nominee: nomineeName ? { name: nomineeName, contact: nomineeContact } : null,
                parentConsents: guardians, events },
     xp,

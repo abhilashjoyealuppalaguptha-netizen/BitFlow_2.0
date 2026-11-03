@@ -20,6 +20,8 @@ model User {
   recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
   publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
   bannedAt         DateTime? // set by an admin: signed out and can't sign in (lib/auth-utils.ts)
+  usernamePending  Boolean   @default(false) // made by Google/GitHub sign-in: picks a username at the first prompt
+  oauthAccounts    OAuthAccount[]
   createdAt   DateTime       @default(now())
 
   // DPDP (lib/privacy.ts). Month and year of birth only: enough to tell whether a parent must consent.
@@ -220,6 +222,21 @@ model Submission {
 // ============================================================================
 // SESSIONS (HTTP-only cookie auth)
 // ============================================================================
+
+// A Google or GitHub account that signs in to a BitFlow account (lib/oauth.ts). Only the
+// provider's account id is kept: no email, name or picture.
+model OAuthAccount {
+  id                String   @id @default(uuid())
+  provider          String   // "google" | "github"
+  providerAccountId String   // Google "sub", GitHub numeric id
+  userId            String
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+}
 
 model Session {
   id        String   @id @default(uuid())

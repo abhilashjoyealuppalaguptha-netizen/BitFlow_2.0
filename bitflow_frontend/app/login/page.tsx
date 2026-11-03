@@ -8,14 +8,37 @@ import ConsentFields, { type ConsentValue } from "@/components/ConsentFields";
 import LoginBackground from "@/components/login/LoginBackground";
 import Bitzy, { type Mood } from "@/components/login/Bitzy";
 import PasswordInput from "@/components/login/PasswordInput";
+import { safeNext } from "@/lib/site";
 
 type Field = "username" | "password" | "secret" | null;
 type Status = "idle" | "loading" | "success" | "error";
 
-/** ?next= when it is a path on this site (never another origin), else the account's home. */
-function destination(next: string | null, role: string) {
-  if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) return next;
-  return role === "ADMIN" ? "/admin" : "/dashboard";
+/** What /api/auth/oauth/<provider>/callback's ?error= codes mean. */
+const OAUTH_ERRORS: Record<string, string> = {
+  cancelled: "Sign-in was cancelled.",
+  state: "That sign-in expired or was started in another browser. Please try again.",
+  provider: "We couldn't finish signing in with that account. Please try again.",
+  banned: "This account has been suspended. Use the contact form if you think that's a mistake.",
+  disabled: "That sign-in option isn't available right now.",
+  busy: "Too many sign-in attempts. Please wait a moment and try again.",
+  signin: "Sign in first, then connect the account from your profile.",
+};
+
+const PROVIDER_LABEL: Record<string, string> = { google: "Google", github: "GitHub" };
+
+function ProviderMark({ provider }: { provider: string }) {
+  return provider === "google" ? (
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  );
 }
 
 export default function LoginPage() {
@@ -64,6 +87,19 @@ export default function LoginPage() {
     setTimeout(() => setStatus((s) => (s === "error" ? "idle" : s)), 1200);
   };
 
+  // Google/GitHub: which buttons to show, and why a sign-in came back here (?error=).
+  const [providers, setProviders] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/auth/oauth").then((r) => r.json()).then((d) => setProviders(d.providers ?? [])).catch(() => {});
+  }, []);
+  const oauthError = params.get("error");
+  useEffect(() => {
+    if (oauthError) fail(OAUTH_ERRORS[oauthError] ?? "Sign-in didn't work. Please try again.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthError]);
+  const next = params.get("next");
+  const oauthHref = (p: string) => `/api/auth/oauth/${p}${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -77,7 +113,7 @@ export default function LoginPage() {
         return fail(res.error ?? "Login failed");
       }
       setStatus("success");
-      const go = destination(params.get("next"), res.user.role);
+      const go = safeNext(params.get("next"), res.user.role);
       // Let Bitzy celebrate for a moment, unless motion is reduced.
       const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setTimeout(() => router.push(go), still ? 0 : 650);
@@ -259,6 +295,27 @@ export default function LoginPage() {
               </p>
             )}
           </form>
+
+          {!asAdmin && providers.length > 0 && (
+            <div className="mt-5">
+              <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-dim mb-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-rim/60" />or<span className="h-px flex-1 bg-rim/60" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {providers.map((p) => (
+                  // A plain link: the browser goes to the provider and back (app/api/auth/oauth).
+                  <a
+                    key={p}
+                    href={oauthHref(p)}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-rim bg-[#141a15] text-[12px] font-semibold text-pale hover:text-bright hover:border-phosphor/50 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-phosphor"
+                  >
+                    <ProviderMark provider={p} />
+                    Continue with {PROVIDER_LABEL[p] ?? p}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

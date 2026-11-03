@@ -34,6 +34,10 @@ export default function PrivacyPage() {
         <li><strong>Account:</strong> your username, a salted hash of your password (never the password itself), an optional
           recovery code (also only a hash), and your <em>month and year</em> of birth. <em>Why:</em> to sign you in, and to know
           whether a parent must agree (under 18). We don&apos;t ask for your email, phone or real name.</li>
+        <li><strong>Google or GitHub sign-in (optional):</strong> if you choose it, Google or GitHub tells us your account ID there,
+          and your email address (Google) or login name (GitHub). We use the email or login once, to suggest a username, and
+          don&apos;t keep it; we keep only the account ID. <em>Why:</em> to recognise you when you sign in that way. You can
+          disconnect it from your profile.</li>
         <li><strong>Your work:</strong> the code you run or submit and its results (pass/fail, test output, counterexamples,
           gate counts), lesson progress, XP, streaks, badges, certificates and contest scores. <em>Why:</em> to grade your work,
           save your progress and show it back to you.</li>

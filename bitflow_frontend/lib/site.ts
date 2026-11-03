@@ -28,5 +28,11 @@ export const pageMeta = (path: string, title: string, description: string) =>
 /** Pages behind sign-in: crawlers only see the sign-in redirect, so keep them out of the index (links are still followed). */
 export const GATED = { robots: { index: false, follow: true } };
 
+/** Where to land after signing in: ?next= when it is a path on this site (never another origin), else the role's home. */
+export function safeNext(next: string | null | undefined, role: string): string {
+  if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) return next;
+  return role === "ADMIN" ? "/admin" : "/dashboard";
+}
+
 /** JSON for a <script type="application/ld+json">, with "<" escaped so the content can't close the tag. */
 export const jsonLd = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003c");

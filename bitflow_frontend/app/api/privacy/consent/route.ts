@@ -3,12 +3,13 @@
  *
  * GET  — what you agreed to and when, the parent consents on your account, and the
  *        privacy-related events in the audit trail.
- * POST { consent: true, birthYear?, birthMonth? } — accept the current notice. Accounts made
- *        before the notice existed also give their month and year of birth here (once; a
- *        correction later goes through /contact, so safe mode can't be switched off by hand).
+ * POST { consent: true, birthYear?, birthMonth?, username? } — accept the current notice. Accounts
+ *        made before the notice existed, or by Google/GitHub sign-in, also give their month and year
+ *        of birth here (once; a correction later goes through /contact, so safe mode can't be
+ *        switched off by hand). Google/GitHub accounts choose their username here too.
  */
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth-utils";
+import { getSessionUser, usernameProblem } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { CONSENT_VERSION, birthProblem, isMinor } from "@/lib/privacy";
@@ -39,8 +40,17 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   if (body?.consent !== true) return NextResponse.json({ error: "Tick the box to accept the privacy notice." }, { status: 400 });
 
-  const data: { consentVersion: string; consentAt: Date; birthYear?: number; birthMonth?: number; guardianStatus?: string } =
+  const data: { consentVersion: string; consentAt: Date; birthYear?: number; birthMonth?: number; guardianStatus?: string; username?: string; usernamePending?: boolean } =
     { consentVersion: CONSENT_VERSION, consentAt: new Date() };
+  // Accounts made by Google/GitHub sign-in pick their username here (app/api/auth/oauth).
+  if (user.usernamePending) {
+    const username = typeof body.username === "string" ? body.username.trim() : "";
+    const bad = usernameProblem(username);
+    if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    const owner = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+    if (owner && owner.id !== user.id) return NextResponse.json({ error: "That username is taken. Try another." }, { status: 400 });
+    Object.assign(data, { username, usernamePending: false });
+  }
   let minor = isMinor(user);
   if (!user.birthYear) {
     const birthYear = Number(body.birthYear), birthMonth = Number(body.birthMonth);

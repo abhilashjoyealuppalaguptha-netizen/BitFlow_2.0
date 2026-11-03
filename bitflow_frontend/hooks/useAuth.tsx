@@ -13,6 +13,10 @@ interface UserProfile {
   needsConsent?: boolean;
   guardianPending?: boolean;
   aiAllowed?: boolean;
+  // Google/GitHub sign-in (lib/oauth.ts)
+  usernamePending?: boolean;   // chooses a username at the consent prompt
+  oauth?: string[];            // connected providers
+  hasPassword?: boolean;       // false for accounts made by Google/GitHub sign-in
 }
 
 /** Extra sign-up fields: month/year of birth and acceptance of the privacy notice. */

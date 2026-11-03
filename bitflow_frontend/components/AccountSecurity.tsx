@@ -1,10 +1,84 @@
 "use client";
 /**
- * components/AccountSecurity.tsx — profile card: change password, and a one-time
- * recovery code for resetting a forgotten password at /reset-password.
+ * components/AccountSecurity.tsx — profile card: connected Google/GitHub accounts, change
+ * password, and a one-time recovery code for resetting a forgotten password at /reset-password.
+ * Accounts made by Google/GitHub sign-in have no password, so they only see the first part.
  */
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+
+const PROVIDER_LABEL: Record<string, string> = { google: "Google", github: "GitHub" };
+/** ?error= codes from /api/auth/oauth/<provider>/callback when connecting. */
+const LINK_ERRORS: Record<string, string> = {
+  taken: "That account is already connected to a different BitFlow user.",
+  already: "You already have one of those connected. Disconnect it first.",
+  cancelled: "Connecting was cancelled.",
+  state: "That took too long or was started in another browser. Please try again.",
+  provider: "We couldn't reach the provider. Please try again.",
+  disabled: "That option isn't available right now.",
+};
+
+function ConnectedAccounts() {
+  const { user, checkSession } = useAuth();
+  const [providers, setProviders] = useState<string[]>([]);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/oauth").then((r) => r.json()).then((d) => setProviders(d.providers ?? [])).catch(() => {});
+    // Coming back from connecting: say how it went, then tidy the URL.
+    const q = new URLSearchParams(window.location.search);
+    const linked = q.get("linked"), error = q.get("error");
+    if (linked) setMsg({ ok: true, text: `${PROVIDER_LABEL[linked] ?? linked} connected. You can sign in with it now.` });
+    else if (error) setMsg({ ok: false, text: LINK_ERRORS[error] ?? "That didn't work. Please try again." });
+    if (linked || error) window.history.replaceState(null, "", window.location.pathname + "#security");
+  }, []);
+
+  const connected = user?.oauth ?? [];
+  const shown = [...new Set([...providers, ...connected])];
+  if (!user || shown.length === 0) return null;
+  const onlyWay = (p: string) => !user.hasPassword && connected.length === 1 && connected[0] === p;
+
+  const disconnect = async (p: string) => {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/auth/oauth/${p}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setMsg({ ok: false, text: data.error ?? "That didn't work." });
+      else { setMsg({ ok: true, text: `${PROVIDER_LABEL[p] ?? p} disconnected.` }); await checkSession(); }
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] text-ghost">Connected accounts</div>
+      <ul className="space-y-1.5">
+        {shown.map((p) => (
+          <li key={p} className="flex items-center justify-between gap-2 text-[12px]">
+            <span className="text-pale">{PROVIDER_LABEL[p] ?? p}</span>
+            {connected.includes(p) ? (
+              <button type="button" disabled={busy || onlyWay(p)} onClick={() => disconnect(p)}
+                      title={onlyWay(p) ? "It's your only way to sign in" : undefined}
+                      className="px-2.5 py-1 rounded border border-rim text-[11px] text-ghost hover:text-danger hover:border-danger/50 disabled:opacity-40 disabled:hover:text-ghost disabled:hover:border-rim">
+                Disconnect
+              </button>
+            ) : providers.includes(p) ? (
+              <a href={`/api/auth/oauth/${p}?link=1`}
+                 className="px-2.5 py-1 rounded border border-phosphor/40 text-[11px] text-phosphor hover:bg-phosphor/10">
+                Connect
+              </a>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {!user.hasPassword && (
+        <p className="text-[10px] text-dim">You sign in with {connected.map((p) => PROVIDER_LABEL[p] ?? p).join(" or ")}; this account has no password.</p>
+      )}
+      {msg && <p role="status" className={`text-[10px] ${msg.ok ? "text-phosphor" : "text-danger"}`}>{msg.text}</p>}
+    </div>
+  );
+}
 
 const field = "w-full bg-void border border-rim rounded px-2 py-1.5 text-[12px] text-pale focus:outline-none focus:border-phosphor/50";
 const button = "w-full py-1.5 rounded-lg border text-[11px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-50";
@@ -17,6 +91,7 @@ async function post(url: string, body: unknown) {
 }
 
 export default function AccountSecurity() {
+  const { user } = useAuth();
   const [hasCode, setHasCode] = useState<boolean | null>(null);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -61,6 +136,9 @@ export default function AccountSecurity() {
     <div id="security" className="border border-rim rounded-xl p-5 bg-pit space-y-5">
       <div className="text-[11px] font-bold uppercase tracking-wider text-bright">Account security</div>
 
+      <ConnectedAccounts />
+
+      {user?.hasPassword !== false && (<>
       <form onSubmit={changePassword} className="space-y-2">
         <div className="text-[11px] text-ghost">Change password</div>
         <input type="password" autoComplete="current-password" placeholder="Current password" aria-label="Current password"
@@ -87,6 +165,7 @@ export default function AccountSecurity() {
         </button>
         {codeMsg && <p role="status" className="text-[10px] text-danger">{codeMsg}</p>}
       </form>
+      </>)}
 
       {code && (
         <div role="dialog" aria-modal="true" aria-label="Your recovery code"
