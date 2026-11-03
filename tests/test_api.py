@@ -352,6 +352,17 @@ endmodule"""
         assert r["success"] and r["waveform"]["available"], r["stdout"]
         assert "No VCD file produced" not in r["stdout"]
 
+    def test_waveform_responses_are_gzipped(self, client):
+        # The base64 VCD makes responses large; they go out compressed when the caller asks
+        tb = ('module tb; reg [7:0] x = 0; wire [7:0] y; inv dut(.x(x), .y(y));\n'
+              '  initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb); repeat (200) #1 x = x + 1; $finish; end\nendmodule\n')
+        body = {"design_v": "module inv(input [7:0] x, output [7:0] y); assign y = ~x; endmodule", "testbench_v": tb}
+        zipped = client.post("/simulate", json=body, headers={"Accept-Encoding": "gzip"})
+        plain = client.post("/simulate", json=body, headers={"Accept-Encoding": "identity"})
+        assert zipped.headers.get("content-encoding") == "gzip"
+        assert "content-encoding" not in plain.headers
+        assert zipped.json()["waveform"]["vcd_base64"] == plain.json()["waveform"]["vcd_base64"]
+
 
 # ===========================================================================
 # TestSimulateJson

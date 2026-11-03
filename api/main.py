@@ -23,6 +23,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 
 from api.config import settings
@@ -104,6 +105,11 @@ def create_app() -> FastAPI:
         allow_methods     = ["GET", "POST"],
         allow_headers     = ["*"],
     )
+
+    # ── Compression ──────────────────────────────────────────────────────────
+    # Waveforms travel as base64 VCD inside the JSON and compress several-fold.
+    # Level 4 keeps the CPU cost small on a fractional-CPU host.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=4)
 
     # ── Exception handlers ────────────────────────────────────────────────────
     # VerilogSandboxError and all its subclasses → structured JSON 4xx/5xx

@@ -23,7 +23,7 @@ jobs:
           echo "8569defb891d2316067613ea00442af28a7a09d405d95b54c0c91f9942d26635  /tmp/verible.tgz" | sha256sum -c -
           tar -xzf /tmp/verible.tgz -C /tmp
           sudo install -m 755 /tmp/verible-$V/bin/verible-verilog-lint /tmp/verible-$V/bin/verible-verilog-format /usr/local/bin/
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
       - run: python -m pytest tests -q
 
   content:

@@ -75,17 +75,17 @@ async def _execute_simulation(
     Returns:
         SimulateResponse — the complete JSON response body.
     """
-    tmpdir, workspace_id = create_workspace()
+    # File work runs in a thread: a large VCD (read + base64) must not stall other requests.
+    tmpdir, workspace_id = await asyncio.to_thread(create_workspace)
     logger.info("ws=%s | New simulation request timeout=%ds", workspace_id, timeout)
 
     try:
         # Write source files to the host-side workspace.
         # The directory is bind-mounted into /workspace inside the container.
-        write_source_files(tmpdir, design_v, testbench_v, files)
+        await asyncio.to_thread(write_source_files, tmpdir, design_v, testbench_v, files)
         logger.debug("ws=%s | Source files written to %s", workspace_id, tmpdir)
 
         # Run the simulation (waits for a free slot first).
-        # This is the only async-blocking call in the pipeline.
         t_queued = time.monotonic()
         async with _sim_slots:
             queue_ms = (time.monotonic() - t_queued) * 1000
@@ -94,7 +94,7 @@ async def _execute_simulation(
         # Read the VCD file if the testbench produced one.
         vcd_base64, vcd_size = (None, 0)
         if settings.include_vcd_in_response:
-            vcd_base64, vcd_size = read_vcd(tmpdir)
+            vcd_base64, vcd_size = await asyncio.to_thread(read_vcd, tmpdir)
 
         # One machine-readable line per run, for log aggregation / alerting.
         logger.info(json.dumps({
@@ -128,7 +128,7 @@ async def _execute_simulation(
 
     finally:
         # Always delete the temp directory regardless of outcome.
-        cleanup_workspace(tmpdir)
+        await asyncio.to_thread(cleanup_workspace, tmpdir)
         logger.debug("ws=%s | Workspace cleaned up", workspace_id)
 
 

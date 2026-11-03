@@ -160,7 +160,7 @@ Browser ──► Next.js API routes ──(short-lived JWT)──► FastAPI /s
 
 ```bash
 # API
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime + test tools (the image uses requirements.txt)
 JWT_SECRET=dev-secret-at-least-32-characters-long uvicorn api.main:app --reload
 
 # Frontend

@@ -34,7 +34,8 @@ MAX_FILES = 16
 MAX_ISSUES = 200
 RULES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "verible.rules")
 
-_slots = asyncio.Semaphore(4)
+# Its own small pool, so typing never waits behind simulations; 2 keeps it light on 0.1 CPU.
+_slots = asyncio.Semaphore(2)
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}\.(v|sv|vh|svh)$")
 
 # design.v:6:3-8: Use 'always_comb' instead of 'always @*'. [Style: combinational-logic] [always-comb]

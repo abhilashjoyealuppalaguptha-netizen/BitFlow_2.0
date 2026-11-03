@@ -1,0 +1,8 @@
+# requirements-dev.txt — API runtime plus test tools (CI and local tests).
+# Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.0.0                     # test runner
+pytest-asyncio>=0.23.0            # async test support
+httpx>=0.27.0                     # async HTTP client used by FastAPI TestClient
