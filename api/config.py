@@ -168,6 +168,15 @@ class Settings(BaseSettings):
             raise ValueError("Set JWT_PUBLIC_KEY (ES256) or JWT_SECRET (32+ chars).")
         return self
 
+    @field_validator("jwt_secret", "jwt_public_key", mode="before")
+    @classmethod
+    def _trim_key(cls, v: str | None) -> str | None:
+        """Drop spaces/newlines picked up when pasting into a dashboard; blank means unset."""
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
+
     @field_validator("mem_limit")
     @classmethod
     def _validate_mem_limit(cls, v: str) -> str:

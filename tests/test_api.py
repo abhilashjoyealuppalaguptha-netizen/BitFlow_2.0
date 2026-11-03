@@ -221,6 +221,26 @@ class TestAuth:
         assert anon_client.post("/simulate/upload", files=files).status_code in (401, 403)
 
 
+class TestKeySettings:
+    """Keys pasted into a hosting dashboard often carry a stray newline or space."""
+
+    def test_secret_is_trimmed(self):
+        from api.config import Settings
+        assert Settings(jwt_secret=f"  {TEST_JWT_SECRET}\n").jwt_secret == TEST_JWT_SECRET
+
+    def test_blank_public_key_is_unset(self):
+        # A blank JWT_PUBLIC_KEY must not switch the API to ES256-only mode
+        from api.config import Settings
+        assert Settings(jwt_secret=TEST_JWT_SECRET, jwt_public_key=" \n").jwt_public_key is None
+
+    def test_token_signed_with_trimmed_secret_accepted(self, anon_client, monkeypatch):
+        import api.jwt_auth as auth
+        from api.config import Settings
+        monkeypatch.setattr(auth.settings, "jwt_secret", Settings(jwt_secret=TEST_JWT_SECRET + "\r\n").jwt_secret)
+        r = anon_client.post("/simulate", json=TestAuth.BODY, headers={"Authorization": f"Bearer {_token()}"})
+        assert r.status_code != 401
+
+
 class TestPublicKeyAuth:
     """JWT_PUBLIC_KEY mode (Vercel signs with JWT_PRIVATE_KEY, the API holds no secret)."""
 
