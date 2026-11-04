@@ -13,6 +13,8 @@ import AccountData from "@/components/AccountData";
 import { useAuth } from "@/hooks/useAuth";
 import type { ProfileData } from "@/lib/profile";
 import SiteHeader from "@/components/SiteHeader";
+import PixelBar from "@/components/pixel/PixelBar";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 // lib/profile.ts folds beginner/intermediate/advanced into Easy/Medium/Hard
 const DIFF_ORDER = ["Easy", "Medium", "Hard", "Expert"];
@@ -125,7 +127,6 @@ function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own:
       <ul className="space-y-3 mt-3">
         {shown.map((t) => {
           const id = ids[t.id];
-          const pct = t.total ? Math.round((t.solved / t.total) * 100) : 0;
           return (
             <li key={t.id} className="flex items-center gap-4">
               <div className="flex-1 min-w-0">
@@ -134,9 +135,7 @@ function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own:
                   {own && <span className="text-[10.5px] text-ghost font-mono shrink-0">{t.solved}/{t.total}</span>}
                 </div>
                 {own && (
-                  <div className="h-1.5 rounded-full bg-rim mt-1.5 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${t.name} progress`}>
-                    <div className="h-full bg-phosphor" style={{ width: `${pct}%` }} />
-                  </div>
+                  <PixelBar value={t.solved} max={t.total} label={`${t.name} progress`} height={6} className="mt-1.5" />
                 )}
               </div>
               {id ? (
@@ -357,9 +356,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
           <div className="border border-rim rounded-xl p-6 bg-pit">
             <div className="text-[11px] font-bold uppercase tracking-wider text-bright mb-4">Recent AC</div>
             {data.recentAC.length === 0 ? (
-              <div className="text-[12px] text-dim">
-                {own ? "No accepted submissions yet — solve a problem in the Arena to see it here." : "No accepted submissions yet."}
-              </div>
+              <PixelEmpty compact title="No solves yet">{own ? "Solve a problem in the Arena to see it here." : "Nothing accepted yet."}</PixelEmpty>
             ) : (
               <div className="space-y-2">
                 {data.recentAC.map((s, i) => (

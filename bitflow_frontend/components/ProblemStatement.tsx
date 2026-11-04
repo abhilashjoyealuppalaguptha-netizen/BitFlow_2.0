@@ -23,6 +23,7 @@ import OptimizationBoard from "./OptimizationBoard";
 import { designReviewPrompt, type DesignScores } from "@/lib/ai-prompts";
 import Discussion from "./Discussion";
 import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
+import PixelBar from "@/components/pixel/PixelBar";
 
 interface ProblemStatementProps {
   problem:    Problem;
@@ -66,7 +67,6 @@ const VerdictPanel = memo(function VerdictPanel({
   result: SubmissionResult;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const pct = result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0;
 
   return (
     <div className={`rounded border ${result.accepted ? "border-phosphor/40 bg-phosphor/5" : "border-danger/40 bg-danger/5"} overflow-hidden`}>
@@ -93,12 +93,7 @@ const VerdictPanel = memo(function VerdictPanel({
       </div>
 
       {/* Progress bar */}
-      <div className="mx-3 mb-2 h-1 bg-surface rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${result.accepted ? "bg-phosphor" : "bg-danger"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <PixelBar value={result.passed} max={result.total} tone={result.accepted ? "phosphor" : "danger"} label="Tests passed" height={4} className="px-3 mb-2" />
 
       <div className="px-3 pb-2 font-mono text-[9px] text-ghost">
         {result.passed}/{result.total} testcases passed · {Math.round(result.totalDurationMs)}ms

@@ -1,5 +1,6 @@
 /** components/admin/ui.tsx — small building blocks shared by the admin console tabs. */
 import type { ReactNode } from "react";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 export function Card({ title, subtitle, action, children, className = "" }: {
   title: string; subtitle?: string; action?: ReactNode; children: ReactNode; className?: string;
@@ -38,7 +39,7 @@ export function Stat({ label, value, hint, tone = "bright" }: {
 }
 
 export function Loading({ what }: { what: string }) {
-  return <p className="py-6 text-center text-[10px] text-dim animate-pulse">Loading {what}…</p>;
+  return <PixelLoader label={`Loading ${what}…`} />;
 }
 
 export function Failed({ message, retry }: { message: string; retry?: () => void }) {

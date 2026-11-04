@@ -7,6 +7,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { DiffEditor, loader } from "@monaco-editor/react";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 loader.config({ paths: { vs: "/monaco/vs" } });   // same self-hosted Monaco as Editor.tsx
 
@@ -86,8 +88,8 @@ export default function SubmissionHistory({ slug, currentCode, onLoad, refreshOn
   }
 
   if (error) return <p className="font-mono text-[10px] text-dim">{error}</p>;
-  if (!rows) return <p className="font-mono text-[10px] text-dim">Loading…</p>;
-  if (rows.length === 0) return <p className="font-mono text-[10px] text-dim">No attempts yet. Run or Submit to start one.</p>;
+  if (!rows) return <PixelLoader size="sm" />;
+  if (rows.length === 0) return <PixelEmpty compact title="No attempts yet">Run or Submit to start one.</PixelEmpty>;
 
   return (
     <>

@@ -22,6 +22,7 @@ import type { RunState, SimulateResponse } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
 import { PaletteButton } from "@/components/CommandPalette";
 import { NavMenuButton } from "@/components/SiteHeader";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface ToolbarProps {
   runState:       RunState;
@@ -57,15 +58,7 @@ interface ToolbarProps {
 /** Animated dots shown inside the button while running. */
 function RunningIndicator() {
   return (
-    <span className="flex items-center gap-[3px]">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1 h-1 rounded-full bg-current animate-pulse_soft"
-          style={{ animationDelay: `${i * 0.2}s` }}
-        />
-      ))}
-    </span>
+    <PixelSpinner size={12} />
   );
 }
 

@@ -6,6 +6,7 @@
 
 import { useEffect } from "react";
 import { sendClientError } from "@/lib/client-error";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 export default function GlobalError({ error, reset }: { error: Error; reset: () => void }) {
   useEffect(() => sendClientError(error), [error]);
@@ -13,6 +14,8 @@ export default function GlobalError({ error, reset }: { error: Error; reset: () 
     <html lang="en">
       <body style={{ margin: 0, minHeight: "100vh", display: "grid", placeItems: "center", background: "#07080a", color: "#e8eaf6", fontFamily: "system-ui, sans-serif" }}>
         <div style={{ textAlign: "center", maxWidth: 420, padding: 16 }}>
+          {/* No stylesheet here: the sprite shows as its first frame */}
+          <PixelSprite anim="sad" size={96} label="Bitzy, short-circuited" className="mx-auto" />
           <h1 style={{ fontSize: 22 }}>BitFlow hit an error</h1>
           <p style={{ color: "#9598ac", fontSize: 14 }}>It has been reported. Your saved work is not affected.</p>
           <button onClick={reset} style={{ marginTop: 12, padding: "8px 16px", borderRadius: 8, border: 0, background: "#00e87a", color: "#07080a", fontWeight: 600, cursor: "pointer" }}>

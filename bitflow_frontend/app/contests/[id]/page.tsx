@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useServerClock, formatDuration } from "../clock";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 type Result = { solved: boolean; wrong: number; minutes: number | null };
 type Row = { rank: number; username: string; solved: number; penalty: number; problems: Record<string, Result>; isMe: boolean };
@@ -62,7 +64,7 @@ export default function ContestPage({ params }: { params: { id: string } }) {
   if (error && !data) {
     return <div className="space-y-3"><p className="text-[13px] text-danger">{error}</p><Link href="/contests" className="text-[12px] text-info hover:underline">← All contests</Link></div>;
   }
-  if (!data) return <p className="text-[12px] text-dim">Loading…</p>;
+  if (!data) return <PixelLoader />;
 
   const meListed = data.standings.some((r) => r.isMe);
 
@@ -114,7 +116,7 @@ export default function ContestPage({ params }: { params: { id: string } }) {
               {status === "running" && <span className="text-[10px] text-dim">updates every {REFRESH_MS / 1000} s</span>}
             </div>
             {data.standings.length === 0 ? (
-              <p className="text-[12px] text-dim">No submissions yet.</p>
+              <PixelEmpty compact title="No submissions yet" />
             ) : (
               <div className="overflow-x-auto border border-rim rounded-xl bg-pit">
                 <table className="w-full text-[12px] font-mono">

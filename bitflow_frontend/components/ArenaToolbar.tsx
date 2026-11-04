@@ -11,6 +11,7 @@ import Link from "next/link";
 import type { ArenaRunState, UseArenaProblemReturn } from "@/hooks/useArenaProblem";
 import type { ArenaSubmissionResult } from "@/lib/arena/types";
 import { NavMenuButton } from "@/components/SiteHeader";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface Props {
   title:      string;
@@ -144,7 +145,7 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
         >
           {isRunning ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-phosphor animate-pulse" />
+              <PixelSpinner size={12} className="text-phosphor" />
               Running…
             </>
           ) : (
@@ -165,7 +166,7 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
         >
           {isSubmitting ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-void animate-pulse" />
+              <PixelSpinner size={12} />
               Judging…
             </>
           ) : (

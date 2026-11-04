@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DiffEditor, loader } from "@monaco-editor/react";
 import type { EditorContent, SavedContent } from "./ProjectsMenu";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 loader.config({ paths: { vs: "/monaco/vs" } });   // our own copy, as components/Editor.tsx
 
@@ -90,7 +91,7 @@ export default function ProjectHistory({ projectId, name, current, onClose, onRe
               {picked ? (
                 <DiffEditor original={left?.content ?? ""} modified={right?.content ?? ""} language={(left ?? right)?.lang ?? "verilog"} theme="vs-dark"
                   options={{ readOnly: true, renderSideBySide: true, minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false }} />
-              ) : <p className="p-4 text-dim">{versions ? "Pick a version." : "Loading…"}</p>}
+              ) : versions ? <p className="p-4 text-dim">Pick a version.</p> : <PixelLoader />}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-rim px-3 py-2">
               {picked && !names.some(changed) && <span className="text-[10px] text-dim">This version is what the editors have now.</span>}

@@ -31,6 +31,7 @@ import type { Diagnostic } from "@/lib/diagnostics";
 import { VERILOG_LANGUAGES, registerVerilog } from "@/lib/verilog-monaco";
 import { lintInBrowser } from "@/lib/synth/client";
 import { mono } from "@/lib/fonts";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 // Load Monaco from our own origin (copied into public/ by scripts/copy-monaco.mjs)
 // so the editor works without a third-party CDN.
@@ -272,13 +273,14 @@ const EDITOR_OPTIONS: MonacoEditorNS.IStandaloneEditorConstructionOptions = {
 
 function EditorSkeleton() {
   return (
-    <div className="w-full h-full bg-pit flex flex-col gap-2 p-4 animate-pulse">
+    <div className="relative w-full h-full bg-pit flex flex-col gap-2 p-4">
+      <div className="absolute inset-0 grid place-items-center"><PixelLoader label="Loading the editor…" /></div>
       {/* Simulate blurred code lines */}
       {Array.from({ length: 12 }).map((_, i) => (
         <div
           key={i}
           className="h-[14px] rounded-sm bg-surface"
-          style={{ width: `${40 + ((i * 37) % 45)}%`, opacity: 0.6 }}
+          style={{ width: `${40 + ((i * 37) % 45)}%`, opacity: 0.25 }}
         />
       ))}
     </div>

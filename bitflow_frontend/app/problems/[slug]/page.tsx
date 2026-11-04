@@ -34,11 +34,12 @@ import type { ParsedVcd }     from "@/lib/vcd-parser";
 import type { RunState }      from "@/lib/types";
 import { useMemo }            from "react";
 import { parseDiagnostics }   from "@/lib/diagnostics";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 // Monaco — browser only
 const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
-  loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
+  loading: () => <div className="w-full h-full bg-pit grid place-items-center"><PixelLoader label="Loading the editor…" /></div>,
 });
 // Panels start closed, so they load after the page instead of in its first bundle.
 const SynthesisPanel = dynamic(() => import("../../../components/SynthesisPanel"), { ssr: false });
@@ -439,10 +440,7 @@ export default function ProblemPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-void flex flex-col items-center justify-center text-center">
-        <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
-        <p className="font-mono text-[11px] text-dim">Loading challenge details...</p>
-      </div>
+      <div className="min-h-screen bg-void flex items-center justify-center"><PixelLoader size="lg" label="Loading the challenge…" /></div>
     );
   }
 

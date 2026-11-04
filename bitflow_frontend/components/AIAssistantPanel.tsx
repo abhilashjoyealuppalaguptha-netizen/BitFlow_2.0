@@ -30,6 +30,7 @@ import { useAI }            from "@/hooks/useAI";
 import { QUICK_ACTIONS, TUTOR_QUICK_ACTIONS } from "@/lib/ai-prompts";
 import type { SimulateResponse } from "@/lib/types";
 import type { ChatMessage, CodeSuggestion, PendingChange } from "@/hooks/useAI";
+import { PixelDots } from "@/components/pixel/PixelLoader";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -432,9 +433,7 @@ export default function AIAssistantPanel({
 
         {isLoading && (
           <div className="flex items-center gap-2 text-dim font-mono text-[10px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" />
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" style={{ animationDelay: "0.2s" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" style={{ animationDelay: "0.4s" }} />
+            <PixelDots />
             <span className="text-dim/50">thinking…</span>
           </div>
         )}

@@ -15,10 +15,11 @@ import InteractiveWidget from "@/components/academy/InteractiveWidget";
 import type { AcademyBlock } from "@/lib/academy-types";
 import { type Cell, minimizePos, minimizeSop, posText, sopText } from "@/lib/studio/logic-min";
 import { diagramSvg } from "@/lib/studio/wave";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 const CircuitViewer = dynamic(() => import("@/components/studio/CircuitViewer"), {
   ssr: false,
-  loading: () => <p className="font-mono text-[12px] text-dim animate-pulse p-4">Loading the circuit…</p>,
+  loading: () => <PixelLoader label="Loading the circuit…" />,
 });
 
 /** **bold** and `code` inside a line of text. */

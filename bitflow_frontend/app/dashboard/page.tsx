@@ -13,6 +13,9 @@ import { GuardianPanel } from "@/components/ConsentGate";
 import SiteHeader from "@/components/SiteHeader";
 import AnnouncementStrip from "@/components/AnnouncementStrip";
 import { LESSONS_SYNCED } from "@/lib/lesson-sync";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
+import PixelBar from "@/components/pixel/PixelBar";
 
 /* ── Lattice background: electrons flowing along a chip-grid, converging
    on a central chip outline. Low-opacity, meant to blend not distract. ── */
@@ -608,12 +611,9 @@ function Stat({ label, value, sub, tone = "text-bright" }: { label: string; valu
   );
 }
 
-function Bar({ pct, tone = "bg-phosphor" }: { pct: number; tone?: string }) {
-  return (
-    <div className="w-full h-1.5 rounded-full bg-rim overflow-hidden">
-      <div className={`h-full rounded-full transition-all duration-500 ${tone}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
-    </div>
-  );
+const BAR_TONE: Record<string, "phosphor" | "info" | "violet"> = { "bg-phosphor": "phosphor", "bg-info": "info", "bg-purple-400": "violet" };
+function Bar({ pct, tone = "bg-phosphor", label }: { pct: number; tone?: string; label?: string }) {
+  return <PixelBar value={Math.min(100, Math.max(0, pct))} max={100} tone={BAR_TONE[tone] ?? "phosphor"} height={6} label={label} />;
 }
 
 const ago = (iso: string) => {
@@ -749,7 +749,7 @@ function DashboardContent() {
                   </div>
                 </>
               ) : (
-                <div className="text-xs text-dim">{daily === undefined ? "Loading…" : "No challenge today."}</div>
+                <div className="text-xs text-dim">{daily === undefined ? <PixelLoader size="sm" /> : "No challenge today."}</div>
               )}
             </GlassCard>
 
@@ -763,7 +763,7 @@ function DashboardContent() {
                       {academy.lastTitle ? `Resume "${academy.lastTitle}"` : "Start the Academy"}
                     </span>
                   </div>
-                  <Bar pct={pct} tone="bg-purple-400" />
+                  <Bar pct={pct} tone="bg-purple-400" label="Academy progress" />
                   <div className="text-[11px] text-dim mt-1">Digital Electronics · {academy.done}/{academy.total} topics · {pct}%</div>
                 </Link>
                 <Link href="/lab" className="block group">
@@ -773,7 +773,7 @@ function DashboardContent() {
                       {lab?.solved ? "Back to the Board Lab" : "Start the Board Lab"}
                     </span>
                   </div>
-                  <Bar pct={lab?.total ? (100 * lab.solved) / lab.total : 0} tone="bg-info" />
+                  <Bar pct={lab?.total ? (100 * lab.solved) / lab.total : 0} tone="bg-info" label="Board Lab progress" />
                   <div className="text-[11px] text-dim mt-1">Board Lab · {lab?.solved ?? 0}/{lab?.total ?? "…"} lessons</div>
                 </Link>
                 <Link href="/sandbox" className="flex gap-2 group">
@@ -803,12 +803,12 @@ function DashboardContent() {
                           {t.complete ? "✓ complete" : `${t.solved}/${t.total}`}
                         </span>
                       </div>
-                      <Bar pct={t.total ? (100 * t.solved) / t.total : 0} tone={t.complete ? "bg-phosphor" : "bg-info"} />
+                      <Bar pct={t.total ? (100 * t.solved) / t.total : 0} tone={t.complete ? "bg-phosphor" : "bg-info"} label={`${t.name} progress`} />
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-dim">{stats === undefined ? "Loading…" : "Solve Arena problems to make progress on a track."}</div>
+                <div className="text-xs text-dim">{stats === undefined ? <PixelLoader size="sm" /> : "Solve Arena problems to make progress on a track."}</div>
               )}
               <Link href="/profile" className="block text-[11px] text-ghost hover:text-phosphor transition-colors mt-3">
                 All tracks and certificates →
@@ -907,7 +907,7 @@ function DashboardContent() {
               </ul>
             ) : (
               <div className="text-xs text-dim">
-                {stats === undefined ? "Loading…" : <>Nothing yet. <Link href="/arena" className="text-ghost hover:text-phosphor">Try the Arena →</Link></>}
+                {stats === undefined ? <PixelLoader size="sm" /> : <PixelEmpty compact title="Nothing yet" action={<Link href="/arena" className="text-ghost hover:text-phosphor">Try the Arena →</Link>} />}
               </div>
             )}
           </GlassCard>

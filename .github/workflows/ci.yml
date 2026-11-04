@@ -61,6 +61,7 @@ jobs:
       - run: npm run check-diagnostics
       - run: npm run check-mutants
       - run: npm run check-verification
+      - run: npm run check-pixel
       - run: npm run check-waveform-diff
       - run: npm run check-vhdl-starter
       - run: npm run check-bitstream

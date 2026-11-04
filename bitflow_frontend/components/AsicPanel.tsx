@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface Stage { pin: string; cell: string; edge: "rise" | "fall"; delay: number; arrival: number; net: string | null }
 interface Path {
@@ -160,12 +161,12 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
           )}
           <button onClick={run} disabled={loading}
                   className="ml-auto h-7 px-3 rounded border border-phosphor/50 text-phosphor hover:bg-phosphor/10 disabled:opacity-50">
-            {loading ? "Running…" : "Run"}
+            {loading ? <span className="inline-flex items-center gap-1.5"><PixelSpinner size={12} />Running…</span> : "Run"}
           </button>
         </div>
 
         <div className="flex-1 overflow-auto p-3 space-y-4">
-          {loading && <p className="font-mono text-[11px] text-ghost">Mapping to Sky130 cells and timing the netlist…</p>}
+          {loading && <PixelLoader label="Mapping to Sky130 cells and timing the netlist…" />}
           {result && !result.ok && <pre className="font-mono text-[11px] text-danger whitespace-pre-wrap">{result.error}</pre>}
 
           {result?.ok && t && p && (

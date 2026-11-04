@@ -4,6 +4,7 @@
  */
 
 import Link from "next/link";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 export const metadata = { title: "Page not found", robots: { index: false } };
 
@@ -13,6 +14,10 @@ export default function NotFound() {
   return (
     <main className="min-h-screen bg-void text-bright flex items-center justify-center px-4">
       <div className="max-w-md text-center space-y-5">
+        <div className="px-crt mx-auto w-fit border-2 border-phosphor/40 bg-pit px-10 pt-4 pb-3 shadow-[0_0_24px_rgba(0,232,122,.12)]">
+          <PixelSprite anim="think" size={96} label="Bitzy, looking for the page" className="mx-auto" />
+          <p className="font-pixel text-[30px] leading-none text-phosphor tracking-wider mt-1">NO SIGNAL</p>
+        </div>
         <div className="font-mono text-[12px] tracking-[0.2em] uppercase text-phosphor">Error 404</div>
         <h1 className="text-3xl font-semibold">This signal isn&apos;t driven</h1>
         <p className="text-[14px] text-ghost">

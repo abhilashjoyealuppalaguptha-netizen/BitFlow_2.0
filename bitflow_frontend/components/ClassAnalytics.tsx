@@ -6,6 +6,7 @@
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 interface ProblemStats {
   slug: string; title: string; href: string; assignments: string[];
@@ -25,7 +26,7 @@ export default function ClassAnalytics({ classId }: { classId: string }) {
   }, [classId]);
 
   if (error) return <p className="text-[12px] text-danger">{error}</p>;
-  if (!data) return <p className="text-[12px] text-dim animate-pulse">Loading analytics…</p>;
+  if (!data) return <PixelLoader label="Loading analytics…" />;
   const quiet = data.activity.filter((s) => s.submits === 0);
 
   return (

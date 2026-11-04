@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import WaveformPanel from "@/components/WaveformPanel";
 import { parseVcd } from "@/lib/vcd-parser";
+import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 type Mode = "bmc" | "prove" | "cover";
 
@@ -148,7 +149,7 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
             cycles
           </label>
           <button className="text-info hover:underline disabled:opacity-40" disabled={loading || !hasProperties} onClick={() => run()}>
-            {loading ? "Solving…" : "Run again"}
+            {loading ? <span className="inline-flex items-center gap-1.5"><PixelSpinner size={12} />Solving…</span> : "Run again"}
           </button>
         </div>
 
@@ -173,7 +174,7 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
             </div>
           )}
 
-          {loading && <p className="text-dim">Solving… (usually a second or two)</p>}
+          {loading && <PixelLoader label="Solving… (usually a second or two)" />}
 
           {result?.status === "error" && (
             <div className="space-y-2">

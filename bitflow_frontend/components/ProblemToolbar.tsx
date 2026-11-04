@@ -18,6 +18,8 @@ import Link from "next/link";
 import type { ProblemRunState } from "@/hooks/useProblem";
 import type { Difficulty } from "@/lib/problem-types";
 import { NavMenuButton } from "@/components/SiteHeader";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
+import PixelBar from "@/components/pixel/PixelBar";
 
 const DIFF_DOT: Record<Difficulty, string> = {
   beginner:     "bg-phosphor",
@@ -47,15 +49,9 @@ function SubmittingProgress({
   index: number;
   total: number;
 }) {
-  const pct = total > 0 ? Math.round(((index) / total) * 100) : 0;
   return (
     <div className="flex items-center gap-2">
-      <div className="w-20 h-1 bg-surface rounded-full overflow-hidden">
-        <div
-          className="h-full bg-info transition-all duration-200 rounded-full"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <PixelBar value={index} max={total} segments={10} tone="info" height={5} className="w-20" label="Tests judged" />
       <span className="font-mono text-[9px] text-info/70 tabular-nums">
         {index}/{total}
       </span>
@@ -175,7 +171,7 @@ export default function ProblemToolbar({
         >
           {isRunning ? (
             <>
-              <span className="w-1 h-1 rounded-full bg-current animate-pulse_soft" />
+              <PixelSpinner size={12} />
               Running…
             </>
           ) : (
@@ -209,7 +205,7 @@ export default function ProblemToolbar({
         >
           {isSubmitting ? (
             <>
-              <span className="w-1 h-1 rounded-full bg-current animate-pulse_soft" />
+              <PixelSpinner size={12} />
               Judging…
             </>
           ) : (

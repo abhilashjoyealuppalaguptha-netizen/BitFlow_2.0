@@ -13,6 +13,7 @@ import Link                             from "next/link";
 import { getSessionUser }               from "@/lib/auth-utils";
 import { lockedBehind }                 from "@/lib/unlock";
 import { getArenaProblemBySlug }         from "@/lib/arena";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 interface PageProps {
   params: Promise<{ category: string; slug: string }>;
@@ -79,9 +80,7 @@ export default async function ArenaPage({ params }: PageProps) {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center h-screen bg-void">
-          <p className="font-mono text-dim text-sm">Loading problem…</p>
-        </div>
+        <div className="flex items-center justify-center h-screen bg-void"><PixelLoader size="lg" label="Loading the problem…" /></div>
       }
     >
       <ArenaSolverClient problem={arenaProblem} />

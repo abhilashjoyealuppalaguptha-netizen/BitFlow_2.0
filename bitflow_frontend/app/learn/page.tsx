@@ -9,6 +9,8 @@ import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/probl
 import { prewarmSimulator } from "@/lib/sim-status";
 import { groupIntoModules, BEGINNER_MODULE_DEFS, INTERMEDIATE_MODULE_DEFS, ADVANCED_MODULE_DEFS } from "@/lib/problems/modules";
 import SiteHeader from "@/components/SiteHeader";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Visual config mapping
@@ -275,11 +277,7 @@ function LevelSection({
         )}
 
         {!isArena && isEmpty && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <Link href="/problems" className="font-mono text-[11px] text-ghost hover:text-bright">
-              Nothing here yet: browse all problems →
-            </Link>
-          </div>
+          <PixelEmpty title="Nothing here yet" action={<Link href="/problems" className="text-ghost hover:text-bright">Browse all problems →</Link>} />
         )}
 
         {!isArena && level.modules.map((mod) => (
@@ -443,12 +441,9 @@ const advancedQuestions = questions.filter(
       <main className="max-w-5xl w-full mx-auto px-6 py-8 flex-1">
         {activeTab === "curriculum" ? (
           loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
-              <p className="font-mono text-[11px] text-dim">Loading curriculum schema registry...</p>
-            </div>
+            <PixelLoader size="lg" label="Loading the curriculum…" />
           ) : (
-            <div className="space-y-8 animate-pulse_once max-w-4xl mx-auto">
+            <div className="space-y-8 anim-fade max-w-4xl mx-auto">
               {levels.map((level) => (
                 <LevelSection key={level.id} level={level} progress={progress} />
               ))}

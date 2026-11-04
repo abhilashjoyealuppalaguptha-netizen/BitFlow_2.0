@@ -78,6 +78,7 @@ import Toolbar                        from "@/components/Toolbar";
 import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
+import PixelLoader from "@/components/pixel/PixelLoader";
 import ProjectsMenu                   from "@/components/ProjectsMenu";
 import { setVerilogContext }          from "@/lib/verilog-monaco";
 import { parseDiagnostics }           from "@/lib/diagnostics";
@@ -101,7 +102,7 @@ import { saveSubmission, loadSubmission, submissionAge } from "@/lib/submission-
 
 const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
-  loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
+  loading: () => <div className="w-full h-full bg-pit grid place-items-center"><PixelLoader label="Loading the editor…" /></div>,
 });
 // Panels start closed, so they load after the page instead of in its first bundle.
 const FormalPanel = dynamic(() => import("@/components/FormalPanel"), { ssr: false });

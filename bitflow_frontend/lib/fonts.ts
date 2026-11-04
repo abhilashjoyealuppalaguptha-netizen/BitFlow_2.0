@@ -10,8 +10,8 @@
 
 import { Inter, JetBrains_Mono, Jersey_10 } from "next/font/google";
 
-/** The BitFlow 3.0 APEX title (app/announcements): blocky, in the style of Minecraft lettering. */
-export const pixel = Jersey_10({ subsets: ["latin"], weight: "400", display: "swap", adjustFontFallback: false });
+/** Blocky pixel lettering: the APEX title (app/announcements) and the pixel UI (components/pixel, `font-pixel`). */
+export const pixel = Jersey_10({ subsets: ["latin"], weight: "400", display: "swap", adjustFontFallback: false, variable: "--font-pixel" });
 
 export const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
 

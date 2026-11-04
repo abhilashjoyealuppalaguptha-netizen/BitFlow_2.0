@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatDuration, useServerClock } from "../../../contests/clock";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 type Problem = { slug: string; title: string; difficulty: string; href: string; solved: boolean; attempts: number; minutes: number | null; gateCount: number | null };
 type Mock = { id: string; startedAt: string; endsAt: string; running: boolean; solved: number; problems: Problem[] };
@@ -50,7 +51,7 @@ export default function MockInterviewPage({ params }: { params: { id: string } }
   if (error && !data) {
     return <div className="space-y-3"><p className="text-[13px] text-danger">{error}</p><Link href="/interview" className="text-[12px] text-info hover:underline">← Interview prep</Link></div>;
   }
-  if (!data) return <p className="text-[12px] text-dim">Loading…</p>;
+  if (!data) return <PixelLoader />;
 
   const { mock } = data;
   const took = Math.max(0, end - new Date(mock.startedAt).getTime());

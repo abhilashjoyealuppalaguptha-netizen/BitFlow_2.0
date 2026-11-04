@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import ProfileView from "@/components/ProfileView";
 import type { ProfileData } from "@/lib/profile";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 function ProfileContent() {
   const [data, setData] = useState<ProfileData | null>(null);
@@ -20,10 +21,7 @@ function ProfileContent() {
   if (loading || !data) {
     return (
       <div className="min-h-screen bg-void text-bright flex items-center justify-center">
-        <span className="text-ghost text-sm">
-          <span className="text-phosphor">►</span> loading profile
-          <span className="animate-blink">_</span>
-        </span>
+        <PixelLoader size="lg" label="Loading your profile…" />
       </div>
     );
   }

@@ -27,11 +27,12 @@ import { LESSONS_SYNCED, fetchDraft, reportLesson } from "@/lib/lesson-sync";
 import BoardCheck from "./BoardCheck";
 import { traceToParsed, traceToVcd, type Trace } from "@/lib/studio/circuit-analysis";
 import type { ParsedVcd } from "@/lib/vcd-parser";
+import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 const Editor = dynamic(() => import("@/components/Editor"), { ssr: false, loading: () => <div className="h-full bg-pit" /> });
 const ModelShelf = dynamic(() => import("./ModelShelf"), { ssr: false });
 const WaveformPanel = dynamic(() => import("@/components/WaveformPanel"), { ssr: false, loading: () => <div className="h-40 bg-pit" /> });
-const Board3D = dynamic(() => import("./Board3D"), { ssr: false, loading: () => <div className="h-full grid place-items-center font-mono text-[11px] text-dim">Loading the board…</div> });
+const Board3D = dynamic(() => import("./Board3D"), { ssr: false, loading: () => <div className="h-full grid place-items-center"><PixelLoader label="Loading the board…" /></div> });
 
 /** Boards a lesson can be built for here; those in FLASH are also programmed from /flash. */
 const BUILD_BOARDS = (Object.keys(BOARDS) as BoardId[]).filter((id) => buildsInBrowser(BOARDS[id]));
@@ -404,7 +405,8 @@ export default function LabLesson({ slug }: { slug: string }) {
               </p>
             )}
             {status.kind === "building" && (
-              <p className="absolute bottom-2 left-3 font-mono text-[10px] text-info pointer-events-none">
+              <p className="absolute bottom-2 left-3 flex items-center gap-1.5 font-mono text-[10px] text-info pointer-events-none">
+                <PixelSpinner size={12} />
                 {synthToolsLoaded() ? "Synthesizing to gates…" : "Loading the synthesis tools (about 6 MB, first time only)…"}
               </p>
             )}

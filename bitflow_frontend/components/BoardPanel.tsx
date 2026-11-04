@@ -22,6 +22,7 @@ import { GateSim, toNumber, type BoardNetlist } from "@/lib/gate-sim";
 import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 import { UartReceiver, UartTransmitter } from "@/lib/uart";
 import { BUTTON, CLOCK, HEX_SEGS, RESET, activeLow, idle, isHex, isRgb, isRx, isSeg } from "@/lib/board-io";
+import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 const RATES  = [1, 2, 5, 10, 50, 100, 1000, 10000];
 /** Cap on clock cycles simulated per animation frame; past it the board runs slower than asked. */
@@ -291,7 +292,7 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
           <div className="flex items-center gap-3 font-mono text-[10px]">
             <button className="text-info hover:underline disabled:opacity-40" disabled={loading} onClick={load}
                     title="Clear every register and release every input">
-              {loading ? "Synthesizing…" : "Power cycle"}
+              {loading ? <span className="inline-flex items-center gap-1.5"><PixelSpinner size={12} />Synthesizing…</span> : "Power cycle"}
             </button>
             <button className="text-ghost hover:text-bright" onClick={onClose}>Close</button>
           </div>
@@ -299,7 +300,7 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
 
         <div className="flex-1 overflow-auto p-3 space-y-3">
           {error && <pre className="whitespace-pre-wrap font-mono text-[11px] text-danger">{error}</pre>}
-          {loading && !sim && <p className="font-mono text-[11px] text-dim">{synthToolsLoaded() || language === "vhdl" ? "Synthesizing to gates…" : "Loading the synthesis tools (about 6 MB, first time only)…"}</p>}
+          {loading && !sim && <PixelLoader label={synthToolsLoaded() || language === "vhdl" ? "Synthesizing to gates…" : "Loading the synthesis tools (about 6 MB, first time only)…"} />}
 
           {sim && (
             <>

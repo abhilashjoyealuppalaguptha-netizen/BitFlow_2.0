@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { downloadBlob } from "@/lib/api";
 import { GuardianPanel } from "@/components/ConsentGate";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 interface ConsentRecord {
   consentVersion: string | null; consentAt: string | null; guardianStatus: string; guardianAllowAi: boolean; minor: boolean;
@@ -57,7 +58,7 @@ function PrivacyRights() {
             </details>
           )}
         </>
-      ) : <p className="text-dim">Loading…</p>}
+      ) : <PixelLoader size="sm" />}
 
       <form onSubmit={saveNominee} className="space-y-2">
         <div className="font-semibold text-pale">Nominee</div>

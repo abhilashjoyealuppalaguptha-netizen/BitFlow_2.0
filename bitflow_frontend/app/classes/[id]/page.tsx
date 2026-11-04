@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ClassAnalytics from "@/components/ClassAnalytics";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 type Status = "on_time" | "late" | "missing" | "pending";
 type Problem = { slug: string; title: string; difficulty: string; href: string };
@@ -135,7 +137,7 @@ export default function ClassPage() {
   }
 
   if (error && !data) return <div className="space-y-3"><p className="text-[13px] text-danger">{error}</p><Link href="/classes" className="text-[12px] text-info hover:underline">← All classes</Link></div>;
-  if (!data) return <p className="text-[12px] text-dim">Loading…</p>;
+  if (!data) return <PixelLoader />;
 
   const { classroom, progress } = data;
   const teacher = data.role === "TEACHER";
@@ -172,7 +174,7 @@ export default function ClassPage() {
 
       <section className="space-y-3">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-dim">Assignments</h2>
-        {progress.assignments.length === 0 && <p className="text-[12px] text-dim">No assignments yet.</p>}
+        {progress.assignments.length === 0 && <PixelEmpty compact title="No assignments yet" />}
         {progress.assignments.map((a) => {
           const past = new Date(a.dueAt) < new Date();
           return (
@@ -212,7 +214,7 @@ export default function ClassPage() {
             )}
           </div>
           {progress.students.length === 0 ? (
-            <p className="text-[12px] text-dim">No students yet. Share the join code above.</p>
+            <PixelEmpty compact title="No students yet">Share the join code above.</PixelEmpty>
           ) : columns.length === 0 ? (
             <p className="text-[12px] text-dim">Create an assignment to start tracking progress.</p>
           ) : (

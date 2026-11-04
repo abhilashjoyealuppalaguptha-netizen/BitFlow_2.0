@@ -5,8 +5,9 @@
  * them on the server would mismatch on hydration.
  */
 import dynamic from "next/dynamic";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
-const loading = () => <p className="font-mono text-[12px] text-dim animate-pulse">Loading the tool…</p>;
+const loading = () => <PixelLoader label="Loading the tool…" />;
 
 export const LogicTool = dynamic(() => import("./LogicTool"), { ssr: false, loading });
 export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading });

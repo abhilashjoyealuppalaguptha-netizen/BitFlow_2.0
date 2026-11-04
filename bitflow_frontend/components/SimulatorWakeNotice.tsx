@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useSimStatus } from "@/lib/sim-status";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 export default function SimulatorWakeNotice() {
   const status = useSimStatus();
@@ -30,7 +31,7 @@ export default function SimulatorWakeNotice() {
          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] flex items-center gap-2.5 px-4 py-2.5 rounded-full border border-rim bg-surface/95 backdrop-blur shadow-lg text-[12.5px]">
       {waking ? (
         <>
-          <span className="w-2 h-2 rounded-full bg-warn animate-pulse shrink-0" />
+          <PixelSprite anim="work" size={24} />
           <span className="text-pale">Waking up the simulator. The first run after a quiet spell takes up to a minute.</span>
         </>
       ) : (

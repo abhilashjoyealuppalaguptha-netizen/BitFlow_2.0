@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 /**
  * Wrap any protected page's content with <AuthGate>. If the session check
@@ -27,10 +28,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-void text-bright font-mono flex items-center justify-center">
-        <span className="text-ghost text-sm">
-          <span className="text-phosphor">►</span> checking access
-          <span className="animate-blink">_</span>
-        </span>
+        <PixelLoader size="lg" label="Checking access…" />
       </div>
     );
   }

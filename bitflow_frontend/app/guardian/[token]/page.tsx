@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 interface Info { username: string; status: string; allowAi: boolean; createdAt: string }
 const card = "w-full max-w-lg rounded-xl border border-rim bg-pit p-6 space-y-4";
@@ -45,7 +46,7 @@ export default function GuardianPage({ params }: { params: { token: string } }) 
         <h1 className="text-[17px] font-bold text-bright">Parent or guardian consent</h1>
         {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
         {done && <p role="status" className="text-[12px] text-phosphor">{done}</p>}
-        {!info && !error && <p className="text-[12px] text-ghost">Loading…</p>}
+        {!info && !error && <PixelLoader />}
 
         {info && info.status !== "granted" && !done && (
           <form className="space-y-4" onSubmit={async (e) => {

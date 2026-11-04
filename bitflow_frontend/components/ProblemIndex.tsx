@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 export interface IndexProblem {
   slug: string; title: string; difficulty: string; category: string; level: string;
@@ -90,7 +91,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
       <p className="text-[11px] text-dim" role="status">{shown.length} of {problems.length}</p>
 
       {shown.length === 0 ? (
-        <p className="text-[13px] text-ghost py-10 text-center">No problem matches. Try fewer filters.</p>
+        <PixelEmpty anim="think" title="No match">Try fewer filters.</PixelEmpty>
       ) : (
         <ul className="divide-y divide-rim/50 border border-rim/60 rounded-xl overflow-hidden">
           {shown.map((p) => (

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useServerClock, formatDuration } from "./clock";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 type Contest = { id: string; title: string; startsAt: string; endsAt: string; status: "upcoming" | "running" | "ended"; problems: number };
 
@@ -34,7 +35,7 @@ export default function ContestsPage() {
       </div>
 
       {failed && <p className="text-[12px] text-danger">Couldn&apos;t load contests.</p>}
-      {data && data.contests.length === 0 && <p className="text-[12px] text-dim">No contests yet.</p>}
+      {data && data.contests.length === 0 && <PixelEmpty title="No contests yet">Check back soon.</PixelEmpty>}
 
       <ul className="space-y-3">
         {data?.contests.map((c) => {

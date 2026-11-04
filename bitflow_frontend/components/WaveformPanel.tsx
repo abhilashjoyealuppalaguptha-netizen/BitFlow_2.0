@@ -62,6 +62,7 @@ import { type DecoderKind, type DecoderSpec, type Frame, PRIMARY, ROLES, autoBit
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout constants
@@ -495,7 +496,7 @@ function EmptyState() {
   return (
     <div className="flex flex-1 items-center justify-center text-[12px] font-mono text-dim">
       <div className="text-center space-y-1">
-        <div className="text-2xl text-dim/40">∿</div>
+        <PixelSprite anim="think" size={48} className="mx-auto" />
         <div>No signals found in waveform.</div>
         <div className="text-[11px]">
           Make sure your testbench calls{" "}

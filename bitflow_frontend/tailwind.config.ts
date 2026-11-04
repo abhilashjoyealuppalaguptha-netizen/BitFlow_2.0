@@ -41,6 +41,8 @@ const config: Config = {
 
       // ── Typography ───────────────────────────────────────────────────────
       fontFamily: {
+        // Blocky pixel lettering for the pixel UI (components/pixel)
+        pixel:   ["var(--font-pixel)", "monospace"],
         // Headings, branding, body copy — Inter, site-wide
         display: ["var(--font-display)", "sans-serif"],
         // Legacy class name used for big headings across pages — also Inter now

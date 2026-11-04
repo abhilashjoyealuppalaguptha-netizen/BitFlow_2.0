@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { renderMarkdown } from "@/components/ArenaProblemStatement";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 interface Comment { id: string; body: string; createdAt: string; username: string; mine: boolean; reported: boolean }
 const MAX = 2000;
@@ -53,7 +54,7 @@ export default function Discussion({ slug, refreshKey }: { slug: string; refresh
           <div className="text-[11px] text-pale">{renderMarkdown(data.editorial)}</div>
         </div>
       )}
-      {data.comments.length === 0 && <p className="text-[10px] text-dim">No comments yet. Share how you approached it, or what tripped you up.</p>}
+      {data.comments.length === 0 && <PixelEmpty compact title="No comments yet">Share how you approached it, or what tripped you up.</PixelEmpty>}
       {data.comments.map((c) => (
         <div key={c.id} className="border-b border-rim/30 pb-2">
           <div className="flex items-center gap-2 text-[9px] text-dim">

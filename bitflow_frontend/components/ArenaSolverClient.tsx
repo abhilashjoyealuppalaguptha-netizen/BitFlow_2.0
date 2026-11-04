@@ -17,11 +17,12 @@ import { parseVcd } from "@/lib/vcd-parser";
 import Terminal from "@/components/Terminal";
 import WaveformPanel, { CounterexampleView, FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 // Monaco is browser-only; the panels start closed, so they load after the page.
 const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
-  loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
+  loading: () => <div className="w-full h-full bg-pit grid place-items-center"><PixelLoader label="Loading the editor…" /></div>,
 });
 const SynthesisPanel   = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
 const LabReport        = dynamic(() => import("@/components/LabReport"), { ssr: false });

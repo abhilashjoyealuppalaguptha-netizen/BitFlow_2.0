@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { Circuit } from "@/lib/studio/circuit";
 import { parseCircuit } from "@/lib/studio/circuit-json";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 interface Listed { id: string; name: string; updatedAt: string; versions: number }
 interface Version { id: string; createdAt: string; message: string | null }
@@ -147,7 +148,7 @@ export default function CircuitProjects({ circuit, current, setCurrent, onOpen }
           ))}
         </ul>
       )}
-      {list && !list.length && <p className="text-dim">No saved circuits yet.</p>}
+      {list && !list.length && <PixelEmpty compact title="No circuits yet">Saved circuits show up here.</PixelEmpty>}
     </div>
   );
 }

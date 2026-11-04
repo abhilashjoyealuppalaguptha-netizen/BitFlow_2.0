@@ -9,6 +9,7 @@ import { BOARDS, type BoardId } from "@/lib/synth/boards";
 import { DRIVER_HINT, FLASH, detectOs, flash, flashArgs, needsWinUsbOnWindows, requestBoard, webUsbAvailable, type FlashMode, type Os } from "@/lib/flash";
 import { takeBitstream } from "@/lib/bitstream-handoff";
 import FlashSetup from "./FlashSetup";
+import PixelBar from "@/components/pixel/PixelBar";
 
 const BOARD_IDS = (Object.keys(FLASH) as BoardId[]);
 type Status = { kind: "idle" } | { kind: "busy"; step: string } | { kind: "done" } | { kind: "failed"; error: string };
@@ -130,9 +131,7 @@ export default function FlashTool() {
       {(status.kind === "busy" || progress) && (
         <div className="space-y-1" aria-live="polite">
           <div className="text-[11px] text-ghost">{status.kind === "busy" ? status.step : ""} {progress && `${progress.label} ${progress.percent.toFixed(0)}%`}</div>
-          <div className="h-1.5 rounded bg-rim/50 overflow-hidden">
-            <div className="h-full bg-phosphor transition-[width] duration-200" style={{ width: `${progress?.percent ?? 2}%` }} />
-          </div>
+          <PixelBar value={progress?.percent ?? 2} max={100} height={6} label="Flashing" />
         </div>
       )}
       {status.kind === "done" && <p className="text-[12px] text-phosphor" role="status">Done: the {b.name} is running your design.</p>}

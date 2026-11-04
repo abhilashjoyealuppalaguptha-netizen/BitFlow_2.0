@@ -7,12 +7,14 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { sendClientError } from "@/lib/client-error";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 export default function PageError({ error, reset }: { error: Error; reset: () => void }) {
   useEffect(() => sendClientError(error), [error]);
   return (
     <main className="min-h-screen bg-void text-bright flex items-center justify-center px-4">
       <div className="max-w-md text-center space-y-5">
+        <PixelSprite anim="sad" size={96} label="Bitzy, short-circuited" className="mx-auto" />
         <div className="font-mono text-[12px] tracking-[0.2em] uppercase text-danger">Something went wrong</div>
         <h1 className="text-2xl font-semibold">This page hit an error</h1>
         <p className="text-[14px] text-ghost">It has been reported. Try again, or head back home; your saved work is not affected.</p>

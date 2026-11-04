@@ -13,6 +13,7 @@ import { rememberSynthesis, synthesizeDesign, synthToolsLoaded } from "@/lib/syn
 import BitstreamTab from "./BitstreamTab";
 import Floorplan from "./Floorplan";
 import type { CriticalPath, PnrSummary } from "@/lib/synth/pnr";
+import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 export interface Fsm {
   module:      string;
@@ -157,7 +158,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
           </div>
           <div className="flex items-center gap-3 font-mono text-[10px]">
             <button className="text-info hover:underline disabled:opacity-40" disabled={loading} onClick={run}>
-              {loading ? "Synthesizing…" : "Re-run"}
+              {loading ? <span className="inline-flex items-center gap-1.5"><PixelSpinner size={12} />Synthesizing…</span> : "Re-run"}
             </button>
             <button className="text-bright hover:underline" onClick={onClose}>Close</button>
           </div>
@@ -173,7 +174,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto p-3">
-          {!result && loading && <p className="font-mono text-[11px] text-dim">{synthToolsLoaded() || language === "vhdl" ? "Synthesizing…" : "Loading the synthesis tools (about 6 MB, first time only)…"}</p>}
+          {!result && loading && <PixelLoader label={synthToolsLoaded() || language === "vhdl" ? "Synthesizing…" : "Loading the synthesis tools (about 6 MB, first time only)…"} />}
 
           {result && !result.ok && (
             <div className="space-y-2">

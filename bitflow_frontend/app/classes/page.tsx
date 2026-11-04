@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 type ClassRow = { id: string; name: string; role: "TEACHER" | "STUDENT"; teacher: string; members: number; assignments: number };
 
@@ -71,7 +72,7 @@ export default function ClassesPage() {
       <section className="space-y-2">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-dim">Your classes</h2>
         {!classes ? (
-          <p className="text-[12px] text-dim">Loading…</p>
+          <PixelLoader size="sm" />
         ) : classes.length === 0 ? (
           <p className="text-[12px] text-dim">You aren&apos;t in any classes yet.</p>
         ) : (

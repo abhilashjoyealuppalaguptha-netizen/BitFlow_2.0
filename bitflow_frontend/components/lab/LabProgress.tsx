@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { doneLessons } from "@/lib/lab/progress";
 import { LESSONS_SYNCED } from "@/lib/lesson-sync";
+import PixelBar from "@/components/pixel/PixelBar";
 
 function useDone() {
   const [done, setDone] = useState<string[]>([]);
@@ -24,7 +25,7 @@ export function LabCount({ total }: { total: number }) {
   return (
     <div className="space-y-1.5 w-full sm:w-56">
       <div className="flex justify-between font-mono text-[10px] text-dim"><span>Your progress</span><span>{n} / {total}</span></div>
-      <div className="h-1.5 rounded bg-rim/50 overflow-hidden"><div className="h-full bg-phosphor transition-[width]" style={{ width: `${(n / total) * 100}%` }} /></div>
+      <PixelBar value={n} max={total} label="Your progress" height={6} />
     </div>
   );
 }

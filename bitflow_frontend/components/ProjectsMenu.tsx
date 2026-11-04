@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectFile } from "@/lib/project-files";
 import type { SandboxProject } from "@/hooks/useSimulation";
 import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 const ProjectHistory = dynamic(() => import("./ProjectHistory"), { ssr: false });
 
@@ -209,7 +210,7 @@ export default function ProjectsMenu({ content, onLoad, disabled }: {
               <h2 className="font-display text-base text-bright">Your projects</h2>
               <button onClick={() => setList(null)} className="text-dim hover:text-bright text-[11px]">Close</button>
             </div>
-            {list.length === 0 && <p className="text-[11px] text-dim">No saved projects yet. Use “Save as a project…” to keep your work in your account.</p>}
+            {list.length === 0 && <PixelEmpty compact title="No projects yet">Use “Save as a project…” to keep your work in your account.</PixelEmpty>}
             <ul className="max-h-[60vh] overflow-auto divide-y divide-rim/50">
               {list.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 py-2">

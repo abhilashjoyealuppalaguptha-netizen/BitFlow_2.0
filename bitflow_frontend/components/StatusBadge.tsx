@@ -15,6 +15,7 @@
 "use client";
 
 import type { RunState, SimulationStatus } from "@/lib/types";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface StatusBadgeProps {
   runState: RunState;
@@ -40,7 +41,7 @@ export default function StatusBadge({ runState, status }: StatusBadgeProps) {
   if (runState === "running") {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-info/30 bg-info/10 font-mono text-[10px] tracking-widest text-info">
-        <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" />
+        <PixelSpinner size={11} />
         RUNNING
       </span>
     );
