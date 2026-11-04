@@ -147,6 +147,15 @@ class TestVerilatorFlow:
         assert [(a["time"], a["file"], a["line"]) for a in d["assertions"]] == [(10, "tb.v", 7)]
         assert "[FAIL] 1 assertion failure" in d["stdout"]
 
+    def test_split_model_builds_without_precompiled_headers(self, client, monkeypatch):
+        # Verilator 5.032 splits the model into several files, and its precompiled headers then
+        # exceed the sandbox's 32 MB file limit. --output-split forces that layout here too.
+        import api.verilator_sim as vs
+        monkeypatch.setattr(vs, "GENERATE", [*vs.GENERATE, "--output-split", "1"])
+        d = _sim(client, ONE_SIDED_TB)
+        assert d["status"] == "success", d["stdout"]
+        assert "File size limit exceeded" not in d["stdout"]
+
     def test_branch_coverage_counts_the_untested_side(self, client):
         cov = _sim(client, ONE_SIDED_TB)["coverage"]
         assert cov["summary"]["branch"]["percent"] == 50.0

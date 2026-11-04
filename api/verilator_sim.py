@@ -106,7 +106,11 @@ def _result(code: int, out: list[str], t0: float, workspace_id: str,
 GENERATE = ["verilator", "--cc", "--exe", "--main", "--timing", "--assert", "--coverage", "--trace",
             "-CFLAGS", "-O0", "-Wno-fatal", "-Wno-lint", "-Wno-style",
             "--prefix", "Vsim", "--Mdir", "obj_dir", "-o", "sim"]
-MAKE = ["make", "-C", "obj_dir", "-f", "Vsim.mk", "-j", "2"]
+# VM_PARALLEL_BUILDS=0: compile the model as one Vsim__ALL.cpp. Newer Verilator (5.032 in the
+# image) otherwise splits it and precompiles Vsim__pch.h into .gch files far over the sandbox's
+# 32 MB file-size limit, so cc1plus is killed ("File size limit exceeded"). One file is also
+# faster for student-sized designs.
+MAKE = ["make", "-C", "obj_dir", "-f", "Vsim.mk", "-j", "2", "VM_PARALLEL_BUILDS=0"]
 RUNTIME_DIR = "/opt/verilator-runtime"   # verilated*.o, built once by Dockerfile.api
 
 
