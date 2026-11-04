@@ -28,17 +28,32 @@ export function backendUrl(): string {
   return "http://127.0.0.1:8000";
 }
 
+/** One simulator instance and its share of the traffic. */
+export interface PoolEntry { url: string; weight: number }
+
 /**
- * Every simulator instance to spread requests over. BACKEND_URLS (comma-separated) lists
- * several identical deployments, e.g. two free Render services; otherwise it is just
- * backendUrl(). The API is stateless, so any instance can serve any request.
+ * Every simulator instance to spread requests over, with weights. BACKEND_URLS
+ * (comma-separated) lists several identical deployments; an entry may end in `|weight`
+ * (default 1) so a stronger host gets a bigger share, e.g.
+ *   https://sim.example.com|8,https://free-1.onrender.com,https://free-2.onrender.com
+ * Without BACKEND_URLS it is just backendUrl(). The API is stateless, so any instance can
+ * serve any request.
  */
-export function backendUrls(): string[] {
-  const urls = (process.env.BACKEND_URLS ?? "")
+export function backendPool(): PoolEntry[] {
+  const pool = (process.env.BACKEND_URLS ?? "")
     .split(",")
-    .map((u) => u.trim().replace(/\/+$/, ""))
-    .filter(Boolean);
-  return urls.length ? urls : [backendUrl().replace(/\/+$/, "")];
+    .map((entry) => {
+      const [url, w] = entry.trim().split("|");
+      const weight = Number(w);
+      return { url: (url ?? "").trim().replace(/\/+$/, ""), weight: Number.isFinite(weight) && weight > 0 ? weight : 1 };
+    })
+    .filter((e) => e.url);
+  return pool.length ? pool : [{ url: backendUrl().replace(/\/+$/, ""), weight: 1 }];
+}
+
+/** The instance URLs alone (health checks wake all of them, whatever their weight). */
+export function backendUrls(): string[] {
+  return backendPool().map((e) => e.url);
 }
 
 // 502/503 come from the host while an instance deploys or fails to wake: another instance can
@@ -46,17 +61,31 @@ export function backendUrls(): string[] {
 // running it again elsewhere would double the work.
 const TRY_NEXT = new Set([502, 503]);
 
+/** Instances in the order to try them: weighted random draws without replacement. */
+function tryOrder(entries: PoolEntry[]): string[] {
+  const left = [...entries];
+  const order: string[] = [];
+  while (left.length) {
+    let r = Math.random() * left.reduce((sum, e) => sum + e.weight, 0);
+    let i = 0;
+    while (i < left.length - 1 && (r -= left[i].weight) >= 0) i++;
+    order.push(left.splice(i, 1)[0].url);
+  }
+  return order;
+}
+
 /**
- * fetch(`${url}${path}`) on the instances in turn, starting at a random one: move on when the
- * request throws or answers 502/503. The last instance's answer (or error) is final.
+ * fetch(`${url}${path}`) on the instances in turn, the first chosen at random by weight (a
+ * plain URL has weight 1): move on when the request throws or answers 502/503. The last
+ * instance's answer (or error) is final.
  */
-export async function fetchWithFailover(urls: string[], path: string, init?: RequestInit): Promise<Response> {
-  if (!urls.length) throw new Error("No backend URL");
-  const start = Math.floor(Math.random() * urls.length);
+export async function fetchWithFailover(pool: (string | PoolEntry)[], path: string, init?: RequestInit): Promise<Response> {
+  if (!pool.length) throw new Error("No backend URL");
+  const urls = tryOrder(pool.map((e) => (typeof e === "string" ? { url: e, weight: 1 } : e)));
   for (let i = 0; ; i++) {
     const isLast = i === urls.length - 1;
     try {
-      const res = await fetch(`${urls[(start + i) % urls.length]}${path}`, init);
+      const res = await fetch(`${urls[i]}${path}`, init);
       if (isLast || !TRY_NEXT.has(res.status)) return res;
     } catch (err) {
       if (isLast) throw err;
@@ -123,7 +152,7 @@ export function styleOnBackend(action: "lint" | "format", body: unknown): Promis
 }
 
 async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
-  const res = await fetchWithFailover(backendUrls(), path, {
+  const res = await fetchWithFailover(backendPool(), path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

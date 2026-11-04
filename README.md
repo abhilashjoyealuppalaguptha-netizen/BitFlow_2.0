@@ -117,7 +117,7 @@ SQLite file is left untouched by the move.
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | frontend / API | Alternative to `JWT_SECRET` for split hosting: ES256 key pair (PEM, literal `\n` allowed); only the frontend holds a secret. |
 | `ADMIN_SECRET` | frontend | Secret needed to self-register as ADMIN. Empty disables admin sign-up. |
 | `BACKEND_URL` | frontend | API base URL (compose sets `http://api:8080`). Required in production. |
-| `BACKEND_URLS` | frontend | Optional comma-separated list of identical API deployments, e.g. two free Render services. Overrides `BACKEND_URL`; requests start at a random instance and move to the next on a connection error or 502/503. Every instance needs the same `JWT_SECRET` / `JWT_PUBLIC_KEY`. |
+| `BACKEND_URLS` | frontend | Optional comma-separated list of identical API deployments, e.g. two free Render services. Overrides `BACKEND_URL`; requests start at a random instance and move to the next on a connection error or 502/503. An entry may end in `\|weight` (default 1) to give a stronger host a bigger share of requests. Every instance needs the same `JWT_SECRET` / `JWT_PUBLIC_KEY`. |
 | `DATABASE_URL` | frontend | Prisma connection string (default `file:/app/data/dev.db`). |
 | `API_PORT` | compose | Host port for the API (default 8000, bound to 127.0.0.1). |
 | `DOMAIN`, `HTTPS`, `FRONTEND_BIND` | compose / frontend | HTTPS deployment via the `https` profile (set by `setup_server.sh`). |
