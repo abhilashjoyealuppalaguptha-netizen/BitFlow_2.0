@@ -17,6 +17,7 @@ interface UserProfile {
   usernamePending?: boolean;   // chooses a username at the consent prompt
   oauth?: string[];            // connected providers
   hasPassword?: boolean;       // false for accounts made by Google/GitHub sign-in
+  totalXp?: number;            // for the header's level chip (lib/levels.ts)
 }
 
 /** Extra sign-up fields: month/year of birth and acceptance of the privacy notice. */

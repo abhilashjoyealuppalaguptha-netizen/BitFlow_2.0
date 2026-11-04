@@ -30,6 +30,34 @@ export function PixelChase({ blocks = 10, cell = 6, className = "" }: { blocks?:
   );
 }
 
+const PERIOD = 8;
+/** A clock and a data bus as pixels across `cells` columns (plus one period, for a seamless scroll). */
+export function tracePixels(cells: number): [x: number, y: number, dim: boolean][] {
+  const out: [number, number, boolean][] = [];
+  for (let x = 0; x < cells + PERIOD; x++) {
+    const p = x % PERIOD, high = p < PERIOD / 2;
+    out.push([x, high ? 0 : 3, false]);                                     // clk: high on y 0, low on y 3
+    if (p === 0 || p === PERIOD / 2) out.push([x, 1, false], [x, 2, false]); // and its edges
+    const cross = (x + 2) % PERIOD === 0;                                    // data changes just after the edge
+    out.push(...(cross ? [[x, 6, true]] as [number, number, boolean][] : [[x, 5, true], [x, 7, true]] as [number, number, boolean][]));
+  }
+  return out;
+}
+
+/** A waveform viewer in pixels: clk and a data bus scrolling left, one step at a time. */
+export function PixelTrace({ cells = 40, scale = 3, className = "" }: { cells?: number; scale?: number; className?: string }) {
+  return (
+    <svg viewBox={`0 0 ${cells} 8`} width={cells * scale} height={8 * scale} shapeRendering="crispEdges"
+         className={`overflow-hidden text-phosphor ${className}`} aria-hidden>
+      <g className="px-scroll" style={{ ["--px-shift" as string]: `${-PERIOD}px`, ["--px-steps" as string]: PERIOD }}>
+        {tracePixels(cells).map(([x, y, dim]) => (
+          <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill="currentColor" opacity={dim ? 0.55 : 1} />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
 export default function PixelLoader({ label = "Loading…", size = "md", className = "" }: LoaderProps) {
   if (size === "sm") {
     return (
@@ -44,8 +72,11 @@ export default function PixelLoader({ label = "Loading…", size = "md", classNa
     <div role="status" aria-live="polite"
          className={`flex flex-col items-center justify-center gap-3 ${lg ? "min-h-[60vh]" : "py-6"} ${className}`}>
       <PixelSprite anim="work" size={lg ? 96 : 48} />
-      <PixelChase blocks={lg ? 12 : 10} cell={lg ? 8 : 6} />
-      <p className={`font-mono ${lg ? "text-[13px]" : "text-[11px]"} text-ghost text-center max-w-sm`}>{label}</p>
+      <PixelTrace cells={lg ? 48 : 40} scale={lg ? 3 : 2} />
+      <p className={`font-mono ${lg ? "text-[13px]" : "text-[11px]"} text-ghost text-center max-w-sm`}>
+        <span className="text-phosphor" aria-hidden>&gt; </span>{label}
+        <span aria-hidden className="px-blink inline-block w-[0.55em] h-[1em] align-[-0.15em] ml-1 bg-phosphor" />
+      </p>
     </div>
   );
 }

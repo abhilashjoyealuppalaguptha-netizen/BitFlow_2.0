@@ -15,6 +15,7 @@ import type { ProfileData } from "@/lib/profile";
 import SiteHeader from "@/components/SiteHeader";
 import PixelBar from "@/components/pixel/PixelBar";
 import PixelEmpty from "@/components/pixel/PixelEmpty";
+import { PixelIcon, badgeIcon } from "@/components/pixel/PixelIcon";
 import { levelFromXp, tierFromXp } from "@/lib/levels";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 
@@ -240,8 +241,9 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
               {data.badges.map((b) => (
                 <li key={b.id} title={b.description}
                     className={`rounded-lg border px-2.5 py-2 ${b.earned ? "border-phosphor/40 bg-phosphor/10" : "border-rim opacity-50"}`}>
-                  <div className={`text-[11px] font-semibold ${b.earned ? "text-phosphor" : "text-ghost"}`}>
-                    {b.earned ? "★ " : ""}{b.label}
+                  <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${b.earned ? "text-phosphor" : "text-ghost"}`}>
+                    <PixelIcon name={badgeIcon(b.id)} size={24} className={b.earned ? "" : "grayscale opacity-60"} />
+                    {b.label}
                   </div>
                   <div className="text-[9px] text-dim leading-snug mt-0.5">{b.description}</div>
                   <span className="sr-only">{b.earned ? "Earned" : "Not earned yet"}</span>

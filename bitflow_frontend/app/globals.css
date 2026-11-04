@@ -129,6 +129,12 @@
 /* A block of a chase: lit for the first third of its cycle; siblings are staggered by animation-delay */
 .px-chase { animation: px-chase 0.9s steps(1, end) infinite; }
 @keyframes px-chase { 0%, 33% { background-color: var(--px-on, #00e87a); } 34%, 100% { background-color: var(--px-off, rgba(0,232,122,.14)); } }
+/* A pixel trace scrolling one period left in whole-pixel steps, seamlessly (components/pixel/PixelLoader.tsx) */
+.px-scroll { animation: px-scroll 0.8s steps(var(--px-steps, 8)) infinite; }
+@keyframes px-scroll { to { transform: translateX(var(--px-shift, -8px)); } }
+/* A terminal block cursor */
+.px-blink { animation: px-blink 1s steps(1, end) infinite; }
+@keyframes px-blink { 50% { opacity: 0; } }
 /* A progress block turning on: no fade, just on, one block after another (transition-delay set per block) */
 .px-cell { transition: background-color 0s, box-shadow 0s; }
 /* An old screen switching on: a bright line opens into the picture, in steps */

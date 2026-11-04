@@ -9,6 +9,8 @@ import { levelFromXp, levelsGained, tierFromXp, xpForLevel } from "../lib/levels
 import { rewardMoments, unseenBadges } from "../lib/pixel/rewards";
 import { effectFor, xpCoins, type Moment } from "../lib/pixel/celebrate";
 import { clearFrame, createFrame, createFx } from "../lib/pixelfx/core/index.js";
+import { BADGE_ICON, ICONS, ICON_COLORS, ICON_SIZE, digitPixels } from "../lib/pixel/icons";
+import { tracePixels } from "../components/pixel/PixelLoader";
 
 // Every frame is SIZE × SIZE, uses only known colours, and keeps Bitzy whole: the antenna light, both
 // eyes and the body's outline are all on the grid (nothing pushed off the edge by a jump).
@@ -49,6 +51,26 @@ assert.equal(litBlocks(1, 1000, 20), 1, "any progress shows");
 assert.equal(litBlocks(999, 1000, 20), 19, "not complete never looks complete");
 assert.equal(litBlocks(5, 10, 20), 10);
 assert.equal(litBlocks(3, 0, 20), 0, "no total, no progress");
+
+// ── Icons, digits and the loader's trace (lib/pixel/icons.ts, components/pixel/PixelLoader.tsx) ──
+for (const [name, { frames }] of Object.entries(ICONS)) {
+  for (const rows of frames) {
+    assert.equal(rows.length, ICON_SIZE, `${name}: ${ICON_SIZE} rows`);
+    for (const row of rows) {
+      assert.equal(row.length, ICON_SIZE, `${name}: ${ICON_SIZE} columns`);
+      for (const c of row) assert.ok(c === "." || c in ICON_COLORS, `${name}: unknown pixel '${c}'`);
+    }
+    assert.ok(rows.join("").replace(/\./g, "").length >= 12, `${name}: draws something`);
+  }
+}
+for (const id of ["first-solve", "solved-10", "solved-25", "solved-50", "streak-7", "beginner", "contest"]) assert.ok(BADGE_ICON[id] in ICONS, `badge ${id} has an icon`);
+const lit = (ch: string) => digitPixels(ch).filter(([, , on]) => on).length;
+assert.equal(digitPixels("8").length, 14);
+assert.deepEqual(["8", "1", "0", "7", "-", "?"].map(lit), [14, 4, 12, 6, 2, 0]);
+const trace = tracePixels(40), key = (x: number, y: number) => `${x},${y}`;
+const set = new Set(trace.map(([x, y]) => key(x, y)));
+assert.ok(trace.every(([x, y]) => x >= 0 && x < 48 && y >= 0 && y < 8), "trace inside its box");
+for (let x = 0; x < 40; x++) for (let y = 0; y < 8; y++) assert.equal(set.has(key(x, y)), set.has(key(x + 8, y)), `trace repeats every period (${x},${y})`);
 
 // ── Levels (lib/levels.ts) ────────────────────────────────────────────────────
 assert.deepEqual([1, 2, 3, 5].map(xpForLevel), [0, 100, 300, 1000]);

@@ -15,6 +15,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { LevelChip } from "@/components/pixel/PixelIcon";
+import { levelFromXp } from "@/lib/levels";
 import { PaletteButton } from "@/components/CommandPalette";
 import AnnouncementBell from "@/components/AnnouncementBell";
 
@@ -56,6 +58,14 @@ function accountLinks(role?: string) {
 function AccountMenu() {
   const { user, loading, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  // XP from the session, then whatever a submit reports (hooks/useProblem.ts sends bitflow:xp)
+  const [xp, setXp] = useState<number | null>(null);
+  useEffect(() => setXp(typeof user?.totalXp === "number" ? user.totalXp : null), [user]);
+  useEffect(() => {
+    const on = (e: Event) => setXp((e as CustomEvent<number>).detail);
+    window.addEventListener("bitflow:xp", on);
+    return () => window.removeEventListener("bitflow:xp", on);
+  }, []);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -76,7 +86,8 @@ function AccountMenu() {
     );
   }
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex items-center gap-2.5">
+      {xp !== null && <LevelChip level={levelFromXp(xp).level} href="/profile" className="hidden sm:inline-flex" />}
       <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
               className="flex items-center gap-2 px-2 py-1 rounded-lg border border-rim hover:border-muted text-[11px] text-pale">
         <span className="w-5 h-5 rounded-full bg-phosphor/20 text-phosphor flex items-center justify-center font-bold uppercase">{user.username[0]}</span>

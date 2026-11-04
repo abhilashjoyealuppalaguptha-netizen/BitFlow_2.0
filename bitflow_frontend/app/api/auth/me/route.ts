@@ -14,7 +14,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ user: null });
     // For the profile's Connected accounts (components/AccountSecurity.tsx).
     const login = await prisma.user.findUnique({
-      where: { id: user.id }, select: { password: true, oauthAccounts: { select: { provider: true } } },
+      where: { id: user.id }, select: { password: true, oauthAccounts: { select: { provider: true } }, xp: { select: { totalXp: true } } },
     });
     return NextResponse.json({
       user: {
@@ -25,6 +25,7 @@ export async function GET() {
         needsConsent:    needsConsent(user),
         guardianPending: guardianPending(user),
         aiAllowed:       canUseAi(user),
+        totalXp:         login?.xp?.totalXp ?? 0,
       },
     });
   } catch (err) {

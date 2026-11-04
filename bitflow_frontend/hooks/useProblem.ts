@@ -164,6 +164,7 @@ export function useProblem(problem: Problem): UseProblemReturn {
       setSubmission(sub);
       setRunState("submitted");
       celebrate(...rewardMoments(sub));
+      if (typeof sub.totalXp === "number") window.dispatchEvent(new CustomEvent("bitflow:xp", { detail: sub.totalXp }));
       return sub;
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
