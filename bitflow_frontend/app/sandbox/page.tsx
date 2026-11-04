@@ -108,6 +108,7 @@ const FormalPanel = dynamic(() => import("@/components/FormalPanel"), { ssr: fal
 const BoardPanel = dynamic(() => import("@/components/BoardPanel"), { ssr: false });
 const SynthesisPanel = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
 const CoveragePanel = dynamic(() => import("@/components/CoveragePanel"), { ssr: false });
+const AsicPanel = dynamic(() => import("@/components/AsicPanel"), { ssr: false });
 const LabReport      = dynamic(() => import("@/components/LabReport"), { ssr: false });
 const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
@@ -415,6 +416,7 @@ function SandboxContent() {
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
+  const [asicOpen, setAsicOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
@@ -716,6 +718,7 @@ function SandboxContent() {
         onReport={() => setReportOpen(true)}
         onBoard={() => setBoardOpen(true)}
         onProve={() => setProveOpen(true)}
+        onAsic={() => setAsicOpen(true)}
         onShare={handleShare}
         onExportZip={result ? handleExportZip : undefined}
         onExportImage={result ? handleExportImage : undefined}
@@ -954,6 +957,8 @@ function SandboxContent() {
        */}
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
       <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
+      <AsicPanel isOpen={asicOpen} onClose={() => setAsicOpen(false)} designCode={projectDesign} language={designLanguage}
+                 testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
       {reportOpen && (
         <LabReport onClose={() => setReportOpen(false)} result={result} parsedVcd={parsedVcd} viewKey="/sandbox" synthDesign={projectDesign}
                    files={[{ name: DESIGN_FILES[designLanguage][0], content: designCode }, { name: TESTBENCH_FILES[testbenchLanguage][0], content: testbenchCode }, ...extraFiles]} />

@@ -38,6 +38,8 @@ interface ToolbarProps {
   onBoard?:       () => void;
   /** Opens formal verification (assertions proved by a solver). */
   onProve?:       () => void;
+  /** Opens ASIC analysis (Sky130 area, timing, power, gate-level simulation). */
+  onAsic?:        () => void;
   /** Saves the design as a read-only share link (/s/[id]). */
   onShare?:       () => void;
   /** Download project ZIP — only shown when result exists */
@@ -91,6 +93,7 @@ export default function Toolbar({
   onReport,
   onBoard,
   onProve,
+  onAsic,
   onShare,
   onExportZip,
   onExportImage,
@@ -261,6 +264,16 @@ export default function Toolbar({
             className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
           >
             Prove
+          </button>
+        )}
+
+        {onAsic && (
+          <button
+            onClick={onAsic}
+            title="As a chip: area, Fmax, timing slack and power on the SkyWater 130 nm process, and your testbench on the gates"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            ASIC
           </button>
         )}
 

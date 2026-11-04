@@ -262,10 +262,10 @@ module tb_counter;
     initial begin
         $display("=== Counter Test Start ===");
         rst = 1; en = 0;
-        repeat(3) @(posedge clk);
+        repeat(3) @(posedge clk); #1;   // change inputs just after the edge, not on it
 
         rst = 0; en = 1;
-        repeat(20) @(posedge clk);
+        repeat(20) @(posedge clk); #1;
 
         $display("Final count: %0d", count);
         $display("=== Test Complete ===");

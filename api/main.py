@@ -28,6 +28,7 @@ from fastapi.responses import RedirectResponse
 
 from api.config import settings
 from api.exceptions import VerilogSandboxError, sandbox_error_handler, unhandled_error_handler
+from api.routes.asic import router as asic_router
 from api.routes.hdl import formal_router, vhdl_router
 from api.routes.health import router as health_router
 from api.routes.simulate import router as simulate_router
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(fpga_router)  # POST /fpga
     app.include_router(vhdl_router)  # POST /vhdl
     app.include_router(formal_router)  # POST /formal
+    app.include_router(asic_router)  # POST /asic
 
     # ── Root redirect ─────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)

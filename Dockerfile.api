@@ -10,7 +10,8 @@ WORKDIR /app
 
 # Install system dependencies: curl (healthcheck), iverilog (simulation), verilator (lint, and the
 # verification simulator in api/verilator_sim.py: it builds C++, so make), yosys (synthesis, formal),
-# z3 (formal solver, and Verilator's randomize() constraints), ghdl (VHDL), nextpnr-ice40 (place & route).
+# z3 (formal solver, and Verilator's randomize() constraints), ghdl (VHDL), nextpnr-ice40 (place & route),
+# opensta (static timing and power on the Sky130 gate netlist, api/routes/asic.py).
 # Place & route targets the HX8K only (api/routes/synthesize.py): the other chip databases (137 MB) go.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -21,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     z3 \
     ghdl \
     nextpnr-ice40 \
+    opensta \
     coreutils \
     && rm -rf /var/lib/apt/lists/* \
     && find /usr/share/nextpnr/ice40 -name 'chipdb-*.bin' ! -name 'chipdb-8k.bin' -delete
@@ -36,6 +38,11 @@ RUN curl -fsSL -o /tmp/verible.tgz \
     && install -m 755 /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-lint \
                       /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-format /usr/local/bin/ \
     && rm -rf /tmp/verible.tgz /tmp/verible-${VERIBLE_VERSION}
+
+# SkyWater 130 nm standard cells for ASIC area, timing and power (api/routes/asic.py):
+# the pinned, checksummed library and the gate-level simulation models generated from it.
+COPY api/install_sky130.sh /tmp/install_sky130.sh
+RUN sh /tmp/install_sky130.sh /opt/sky130 && rm /tmp/install_sky130.sh
 
 # Install python dependencies
 COPY requirements.txt .

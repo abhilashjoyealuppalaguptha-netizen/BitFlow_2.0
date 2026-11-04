@@ -26,6 +26,18 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest tests -q
 
+  # OpenSTA is packaged by Debian but not Ubuntu: the ASIC flow runs in the API image's base.
+  asic:
+    name: ASIC flow (Sky130 + OpenSTA)
+    runs-on: ubuntu-latest
+    container: python:3.11-slim
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends curl iverilog yosys opensta
+      - run: sh api/install_sky130.sh /opt/sky130
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_asic.py -q
+
   content:
     name: Content checks (problems, templates, board simulator, contest standings)
     runs-on: ubuntu-latest

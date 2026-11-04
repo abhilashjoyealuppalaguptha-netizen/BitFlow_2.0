@@ -112,6 +112,11 @@ export function synthesizeOnBackend(design_v: string): Promise<{ status: number;
   return postToBackend("/synthesize", { design_v });
 }
 
+/** POST /asic: Sky130 area, static timing and power; with a testbench, gate-level simulation too. */
+export function asicOnBackend(body: { design_v: string; testbench_v: string | null; period_ns: number; clock: string | null }): Promise<{ status: number; data: any }> {
+  return postToBackend("/asic", body);
+}
+
 /** POST /style/lint or /style/format (Verible) on the backend. */
 export function styleOnBackend(action: "lint" | "format", body: unknown): Promise<{ status: number; data: any }> {
   return postToBackend(`/style/${action}`, body);
