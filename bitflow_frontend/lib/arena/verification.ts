@@ -7,6 +7,7 @@
  */
 
 import type { ArenaProblem } from "./types";
+import { SV_VERIFICATION_PROBLEMS } from "./verification-sv";
 
 const RULES = `
 **How it's graded**
@@ -437,4 +438,6 @@ endmodule
 `,
     hiddenTestcases: [],
   },
+  // Industry-style verification on Verilator (assertions, constrained random, coverage bars).
+  ...SV_VERIFICATION_PROBLEMS,
 ];

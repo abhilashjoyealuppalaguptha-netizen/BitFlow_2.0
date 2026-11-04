@@ -59,6 +59,10 @@ export interface ArenaProblem {
   /** Timing problems (lib/arena/timing.ts): Fmax the design must reach on an iCE40-HX8K,
    *  measured inside `wrapper`, a top module that registers every input and output. */
   timing?: { targetMhz: number; wrapper: string };
+  /** Verification problems (lib/arena/verification.ts): run every grading simulation on Verilator
+   *  (SystemVerilog classes, randomize(), concurrent assertions), and require the student's testbench
+   *  to reach this coverage of the correct design (percent, lib/grading.ts coverageShortfall). */
+  verification?: { simulator: "verilator"; minCoverage?: { line?: number; branch?: number; toggle?: number } };
 
   // Rewards
   xpReward:     number;

@@ -60,6 +60,18 @@ const chapter: AcademyTopic = {
       ],
     },
     {
+      id: "assertions",
+      heading: "Assertions and coverage",
+      blocks: [
+        p("Verification teams don't check designs with `if` and `$display` alone. **SystemVerilog** adds three tools, and a testbench is judged by all three: **assertions** state rules that must always hold, **constrained random** stimulus tries inputs you wouldn't think of, and **coverage** measures how much of the design the tests actually reached."),
+        { kind: "code", text: "// Concurrent assertion: checked at every clock edge\nassert property (@(posedge clk) disable iff (rst) !(gnt[0] && gnt[1]))\n  else $error(\"both requesters granted\");\n\n// Coverage point: proves a path was reached\ncover property (@(posedge clk) $past(state) == IDLE && state == BUSY);\n\n// Constrained random stimulus\nclass Txn;\n  rand bit [7:0] a, b;\n  constraint edges { a dist { 0 := 1, 255 := 1, [1:254] :/ 6 }; }\nendclass", caption: "An assertion fires the moment its rule breaks, with the exact time and line. A failed assertion is a bug found, with no `FAIL` print needed." },
+        { kind: "table", headers: ["Coverage", "Counts", "A gap means"], rows: [["Line", "Each statement that ran", "Code no test reached"], ["Branch", "Each side of every `if` and `case`", "A decision only ever went one way"], ["Toggle", "Each signal bit going 0 to 1 and 1 to 0", "A bit that never changed, so a stuck bit would go unnoticed"], ["Cover point", "Each `cover property` that matched", "A scenario you meant to test never happened"]] },
+        { kind: "callout", tone: "warning", text: "100% coverage doesn't mean the design is right: it means every part was exercised. You still need checks that notice a wrong answer. Coverage shows you where your checks never looked." },
+        { kind: "practice", question: "A 4-bit counter's testbench passes, but toggle coverage shows `q[3]` never changed. What does that tell you?", options: ["The test never counted to 8, so a stuck top bit would go unnoticed", "The counter has a bug", "An assertion failed", "Nothing: line coverage is enough"], correctIndex: 0, explanation: "`q[3]` first goes high at 8. The test stopped early, so it **never checked the top bit**. Run it longer." },
+        { kind: "link", href: "/arena/verification/sv-verify-alu8-random", label: "Try a coverage-graded problem", text: "Write a SystemVerilog testbench on Verilator. It must reach the coverage bar and catch every hidden bug." },
+      ],
+    },
+    {
       id: "flow",
       heading: "From code to chip",
       blocks: [

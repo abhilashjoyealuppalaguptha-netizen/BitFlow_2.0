@@ -142,6 +142,7 @@ export function testcasePassed(success: boolean, stdout: string, expected: strin
 
 export async function simulate(
   design: string, testbench: string, files?: Record<string, string> | null, testbenchLanguage: TestbenchLanguage = "verilog",
+  simulator?: "verilator",
 ): Promise<SimulateResponse> {
   const { status, data } = await simulateOnBackend({
     design_v:    design,
@@ -149,6 +150,7 @@ export async function simulate(
     timeout:     30,
     ...(files ? { files } : {}),
     ...(testbenchLanguage !== "verilog" ? { testbench_language: testbenchLanguage } : {}),
+    ...(simulator && testbenchLanguage === "verilog" ? { simulator } : {}),
   });
   if (status !== 200) {
     const detail = data?.detail || data?.error;
@@ -189,6 +191,34 @@ export interface TestbenchQuestion { starterCode: string; mutants?: string | nul
 /** Max mutants kept per problem: enough variety, bounded grading cost. */
 export const MAX_MUTANTS = 8;
 
+/** Verification problems (lib/arena/verification.ts): Verilator for every run, and a coverage bar. */
+export function verificationSettings(slug?: string) {
+  return (slug && getArenaProblemBySlug(slug)?.verification) || null;
+}
+
+/** A testbench flags a design when it prints FAIL, doesn't finish, or (Verilator) one of its assertions fires. */
+export function runFlagged(r: Pick<SimulateResponse, "success" | "stdout" | "assertions">): boolean {
+  // A FAIL line flags even when an unconditional "ALL TESTS PASSED" follows it.
+  return !sentinelPassed(r.success, r.stdout ?? "") || (r.stdout ?? "").includes("FAIL") || (r.assertions?.length ?? 0) > 0;
+}
+
+/** Why coverage falls short of the problem's bar, or null when it's met. */
+export function coverageShortfall(
+  summary: Partial<Record<"line" | "branch" | "toggle", { percent: number | null }>> | undefined,
+  min: { line?: number; branch?: number; toggle?: number } | undefined,
+): string | null {
+  if (!min) return null;
+  if (!summary) return "No coverage was measured (the run didn't finish).";
+  const short = (["line", "branch", "toggle"] as const).filter((k) => {
+    const need = min[k];
+    const got = summary[k]?.percent;
+    return need !== undefined && got !== null && got !== undefined && got < need;
+  });
+  return short.length === 0 ? null
+    : "Coverage too low: " + short.map((k) => `${k} ${summary[k]?.percent}% (need ${min[k]}%)`).join(", ")
+      + ". Drive the parts of the design your testbench never reaches (open Coverage in the sandbox to see them).";
+}
+
 /** A testbench must test behaviour: no reading files (e.g. the DUT's source) or running commands. */
 export function testbenchPolicyViolation(tb: string): string | null {
   const task = tb.match(/\$(fopen|fread|fgets|fgetc|fscanf|sscanf|readmem[bh]|system)\b/);
@@ -203,9 +233,10 @@ export async function gradeTestbench(q: TestbenchQuestion, tb: string, language:
     return { verdicts: [], passed: 0, total: 0, accepted: false, totalDurationMs: 0, stdout: null, stderr: null, exitCode: null,
              errorMessage: "This problem isn't ready yet: its bugs haven't been generated (an admin needs to import the model testbench)." };
   }
-  const simulate_ = (design: string) => simulate(design, tb, files, language);
+  const settings = verificationSettings(q.slug);
+  const simulate_ = (design: string) => simulate(design, tb, files, language, settings?.simulator);
   const base = await simulate_(q.starterCode);
-  if (!sentinelPassed(base.success, base.stdout ?? "")) {
+  if (runFlagged(base)) {
     return {
       verdicts: [], passed: 0, total: mutants.length, accepted: false, totalDurationMs: base.duration_ms ?? 0,
       stdout: base.stdout ?? null, stderr: base.stderr ?? null, exitCode: base.exit_code ?? null,
@@ -214,20 +245,24 @@ export async function gradeTestbench(q: TestbenchQuestion, tb: string, language:
         : "Your testbench reports a failure (or doesn't finish) on the correct design. It must pass the given DUT and only flag broken ones.",
     };
   }
+  // Verification problems: the testbench must also exercise enough of the correct design.
+  const coverageGap = coverageShortfall(base.coverage?.summary, settings?.minCoverage);
   const verdicts: TestcaseVerdict[] = await Promise.all(mutants.map(async (m) => {
     const r = await simulate_(m.code);
-    const caught = !sentinelPassed(r.success, r.stdout ?? "");
+    const caught = runFlagged(r);
     return {
       testcaseId: m.id, description: `${caught ? "Caught" : "Missed"}: ${m.description}`, passed: caught,
       actualOutput: "", expectedOutput: "", durationMs: r.duration_ms ?? 0,
     };
   }));
   const passed = verdicts.filter((v) => v.passed).length;
+  const allCaught = passed === mutants.length;
   return {
-    verdicts, passed, total: mutants.length, accepted: passed === mutants.length,
+    verdicts, passed, total: mutants.length, accepted: allCaught && !coverageGap,
     totalDurationMs: (base.duration_ms ?? 0) + verdicts.reduce((s, v) => s + v.durationMs, 0),
     stdout: base.stdout ?? null, stderr: base.stderr ?? null, exitCode: base.exit_code ?? null,
-    errorMessage: passed === mutants.length ? undefined : `Your testbench caught ${passed} of ${mutants.length} bugs.`,
+    errorMessage: [allCaught ? null : `Your testbench caught ${passed} of ${mutants.length} bugs.`, coverageGap]
+      .filter(Boolean).join(" ") || undefined,
   };
 }
 
@@ -236,19 +271,23 @@ async function verifyModelTestbench(q: TestbenchQuestion, tb: string): Promise<{
   const violation = testbenchPolicyViolation(tb);
   if (violation) return { ok: false, error: violation };
   const files = parseDataFiles(q.dataFiles);
-  const base = await simulate(q.starterCode, tb, files);
-  if (!sentinelPassed(base.success, base.stdout ?? "")) {
+  const settings = verificationSettings(q.slug);
+  const run = (design: string) => simulate(design, tb, files, "verilog", settings?.simulator);
+  const base = await run(q.starterCode);
+  if (runFlagged(base)) {
     return { ok: false, error: `model testbench fails the correct design: ${(base.stdout || base.stderr || "").trim().split("\n").slice(-3).join(" | ")}`.slice(0, 500) };
   }
+  const gap = coverageShortfall(base.coverage?.summary, settings?.minCoverage);
+  if (gap) return { ok: false, error: `model testbench: ${gap}` };
   const candidates = generateMutants(q.starterCode);
   const killed: Mutant[] = [];
   for (let i = 0; i < candidates.length; i += 4) {          // bounded parallelism
     const batch = candidates.slice(i, i + 4);
-    const runs = await Promise.all(batch.map((m) => simulate(m.code, tb, files)));
+    const runs = await Promise.all(batch.map((m) => run(m.code)));
     // Keep mutants that compile and that the model testbench flags.
-    // Caught by a finished run (FAIL printed or a crash). Not timeouts: grading would wait them out on every submit.
+    // Caught by a finished run (FAIL printed, an assertion fired, or a crash). Not timeouts: grading would wait them out on every submit.
     batch.forEach((m, j) => {
-      if ((runs[j].status === "success" || runs[j].status === "runtime_error") && !sentinelPassed(runs[j].success, runs[j].stdout ?? "")) killed.push(m);
+      if ((runs[j].status === "success" || runs[j].status === "runtime_error") && runFlagged(runs[j])) killed.push(m);
     });
   }
   const mutants = pickMutants(killed, MAX_MUTANTS);
@@ -353,7 +392,7 @@ async function verifyModelHarness(q: TestbenchQuestion, harness: string): Promis
 export async function verifyReferenceSolution(
   q: GradableQuestion & { problemType?: string; starterCode?: string; mutants?: string | null; slug?: string }, code: string,
 ): Promise<{ ok: true; mutants?: Mutant[] } | { ok: false; error: string }> {
-  if (q.problemType === "testbench") return verifyModelTestbench({ starterCode: q.starterCode ?? "", dataFiles: q.dataFiles }, code);
+  if (q.problemType === "testbench") return verifyModelTestbench({ starterCode: q.starterCode ?? "", dataFiles: q.dataFiles, slug: q.slug }, code);
   if (q.problemType === "formal") return verifyModelHarness({ starterCode: q.starterCode ?? "", slug: q.slug }, code);
   const violation = designPolicyViolation(code, gradingTestbenches(q));
   if (violation) return { ok: false, error: violation };

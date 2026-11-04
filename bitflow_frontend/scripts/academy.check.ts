@@ -11,6 +11,7 @@ import { ACADEMY_TOPIC_META } from "../lib/academy-meta";
 import type { AcademyBlock, AcademyTopic } from "../lib/academy-types";
 import { GateSim, toNumber } from "../lib/gate-sim";
 import { getProblemBySlug } from "../lib/problems/index";
+import { getArenaProblemBySlug } from "../lib/arena";
 import { compile, toBits, validate } from "../lib/studio/circuit";
 import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
@@ -59,6 +60,7 @@ function checkLink(where: string, href: string) {
   assert.ok(area, `${where}: bad link ${href}`);
   if (area === "academy" && rest && !rest.includes("/") && rest !== "roadmap") return assert.ok(ACADEMY_TOPICS.some((t) => t.slug === rest), `${where}: no chapter ${href}`);
   if (area === "problems" && rest) return assert.ok(getProblemBySlug(rest), `${where}: no problem ${href}`);
+  if (area === "arena" && rest.includes("/")) return assert.ok(getArenaProblemBySlug(rest.split("/")[1])?.category.toLowerCase() === rest.split("/")[0], `${where}: no arena problem ${href}`);
   if (area === "studio" && rest.startsWith("challenges/")) return assert.ok(challengeById(rest.slice(11)), `${where}: no challenge ${href}`);
   assert.ok(fs.existsSync(path.join(ROOT, "app", area, rest, "page.tsx")), `${where}: no page ${href}`);
 }

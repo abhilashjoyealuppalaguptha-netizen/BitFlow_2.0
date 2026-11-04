@@ -31,6 +31,7 @@ interface CheckProblem {
   starterCode: string; publicTestbench: string; hidden: HiddenTest[];
   files: Record<string, string>;   // extra input files, e.g. a $readmemh hex file
   timing: boolean;                 // lib/arena/timing.ts: the starter is correct, only too slow
+  verilator: boolean;              // lib/arena/verification-sv.ts: graded on Verilator, not Icarus
 }
 interface RunResult { compiled: boolean; success: boolean; stdout: string; log: string }
 
@@ -87,6 +88,7 @@ const problems: CheckProblem[] = [
   slug: p.slug,
   problemType: p.problemType ?? "design",
   timing: !!p.timing,
+  verilator: p.verification?.simulator === "verilator",
   learningLevel: p.learningLevel,
   expectedOutputMode: p.expectedOutputMode ?? "stdout_compare",
   starterCode: p.starterCode,
@@ -112,6 +114,15 @@ for (const p of problems) {
     // the model harness and its mutants are checked by verifyReferenceSolution on import.
     const dut = simulate(p.starterCode, "module bf_check_tb; endmodule", p.files);
     if (!dut.compiled) fail(p.slug, `DUT does not compile: ${dut.log.trim().split("\n")[0]}`);
+    continue;
+  }
+  if (p.verilator) {
+    // SystemVerilog skeleton (classes, randomize()) runs on Verilator, not Icarus; the model
+    // testbench, coverage bar and mutants are checked by verifyReferenceSolution on import.
+    const empty = "module bf_check_tb; endmodule";
+    if (!simulate(p.starterCode, empty, p.files).compiled) fail(p.slug, "DUT does not compile");
+    const compiling = generateMutants(p.starterCode).filter((m) => simulate(m.code, empty, p.files).compiled);
+    if (compiling.length < 5) fail(p.slug, `only ${compiling.length} compiling mutants of the DUT (need 5)`);
     continue;
   }
   const pub = simulate(p.starterCode, p.publicTestbench, p.files);
