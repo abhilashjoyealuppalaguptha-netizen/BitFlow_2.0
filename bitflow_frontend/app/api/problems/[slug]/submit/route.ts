@@ -194,6 +194,10 @@ export async function POST(
     const daily = await getDailyQuestion();
     if (daily?.id === question.id) dailyBonusXp = await claimDailyBonus(user.id);
   }
+  // The total after this submission's XP, so the page can tell when a level was crossed.
+  const totalXp = user
+    ? (await prisma.userXp.findUnique({ where: { userId: user.id }, select: { totalXp: true } }).catch(() => null))?.totalXp ?? null
+    : null;
 
   return NextResponse.json({
     submission: {
@@ -208,6 +212,7 @@ export async function POST(
       submittedCode:   writesTb ? testbenchCode : designCode,
       xpEarned:        (saved?.xpEarned ?? 0) + dailyBonusXp,   // what was actually awarded
       dailyBonusXp,
+      totalXp,
       errorMessage:    grade.errorMessage,
       failingWaveform: await failingWaveform,
       counterexample:  cx,

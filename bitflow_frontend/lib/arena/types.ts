@@ -117,6 +117,8 @@ export interface ArenaSubmissionResult {
   totalDurationMs: number;
   submittedCode:   string;
   xpEarned:        number;
+  /** Your total XP after it (signed in only): shows when a level was crossed */
+  totalXp?:        number | null;
   errorMessage?:   string;
   /** Your design's own signals on the first failing hidden test (wrong answers only). */
   failingWaveform?: import("@/lib/grading").FailingWaveform | null;

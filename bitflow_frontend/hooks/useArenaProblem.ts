@@ -19,6 +19,8 @@ import type { SimulateResponse } from "@/lib/types";
 import { runSimulation, submitSolution, checkHealth } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
+import { rewardMoments } from "@/lib/pixel/rewards";
 
 export type ArenaTestbenchLanguage = "verilog" | "python";
 
@@ -118,6 +120,7 @@ async function runFormalCheck(design: string, harness: string, depth: number): P
 
 export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
   const { user } = useAuth();
+  const celebrate = useCelebrate();
   const isFormal = problem.problemType === "formal";
   const [designCode,    setDesignCode]    = useState(problem.starterCode);
   // Arena exposes the public testbench in the editor (read-only view)
@@ -192,13 +195,14 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
       const sub = await submitSolution<ArenaSubmissionResult>(problem.slug, designCode, testbenchCode, { testbenchLanguage });
       setSubmission(sub);
       setRunState("submitted");
+      celebrate(...rewardMoments(sub));
       return sub;
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
       setRunState("error");
       return null;
     }
-  }, [runState, problem.slug, designCode, testbenchCode, testbenchLanguage]);
+  }, [runState, problem.slug, designCode, testbenchCode, testbenchLanguage, celebrate]);
 
   // ── Reset ─────────────────────────────────────────────────────────────────
   const resetToStarter = useCallback(() => {

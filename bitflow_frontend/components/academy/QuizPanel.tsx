@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AcademyQuizQuestion } from "@/lib/academy-types";
 import { quizPassed } from "@/lib/academy-progress-storage";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 
 interface Props {
   questions: AcademyQuizQuestion[];
@@ -12,6 +13,7 @@ interface Props {
 export default function QuizPanel({ questions, onComplete }: Props) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  const celebrate = useCelebrate();
 
   const score = questions.reduce((acc, q) => {
     return acc + (answers[q.id] === q.correctIndex ? 1 : 0);
@@ -19,6 +21,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
 
   const handleSubmit = () => {
     setSubmitted(true);
+    if (score === questions.length) celebrate({ kind: "win" });
     onComplete?.(score, questions.length);
   };
 

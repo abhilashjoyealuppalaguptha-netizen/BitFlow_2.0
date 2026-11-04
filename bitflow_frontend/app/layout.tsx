@@ -22,6 +22,7 @@ import SiteNotice from "@/components/SiteNotice";
 import { NavDrawer } from "@/components/SiteHeader";
 import MockBanner from "@/components/MockBanner";
 import { inter, mono, pixel } from "@/lib/fonts";
+import CelebrationProvider from "@/components/pixel/CelebrationProvider";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import LessonSync from "@/components/LessonSync";
 import "./globals.css";
@@ -95,7 +96,7 @@ export default function RootLayout({
       <body className="h-full overflow-y-auto bg-void text-bright font-mono antialiased">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_SCHEMA) }} />
         <AuthProvider>
-          {children}
+          <CelebrationProvider>{children}</CelebrationProvider>
           <PageViewTracker />
           <SimulatorWakeNotice />
           <CommandPalette />

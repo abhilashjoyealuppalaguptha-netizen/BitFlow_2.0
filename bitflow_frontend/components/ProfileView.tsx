@@ -15,6 +15,8 @@ import type { ProfileData } from "@/lib/profile";
 import SiteHeader from "@/components/SiteHeader";
 import PixelBar from "@/components/pixel/PixelBar";
 import PixelEmpty from "@/components/pixel/PixelEmpty";
+import { levelFromXp, tierFromXp } from "@/lib/levels";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 
 // lib/profile.ts folds beginner/intermediate/advanced into Easy/Medium/Hard
 const DIFF_ORDER = ["Easy", "Medium", "Hard", "Expert"];
@@ -27,12 +29,6 @@ const DIFF_COLOR: Record<string, { ring: string; text: string; bg: string }> = {
 const OTHER_COLOR = { ring: "#9598ac", text: "text-ghost", bg: "bg-void/40" };
 const diffColor = (d: string) => DIFF_COLOR[d] ?? OTHER_COLOR;
 
-function tierFromXp(xp: number) {
-  if (xp >= 7000) return { label: "Architect", color: "text-phosphor-glow" };
-  if (xp >= 3000) return { label: "Engineer", color: "text-phosphor" };
-  if (xp >= 1000) return { label: "Builder", color: "text-info" };
-  return { label: "Novice", color: "text-ghost" };
-}
 
 // Build a 53-week x 7-day grid ending today, Sunday-aligned, for the heatmap.
 function buildHeatmapWeeks(activity: Record<string, number>) {
@@ -109,6 +105,7 @@ function PublicProfileCard({ username, initial }: { username: string; initial: b
 function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own: boolean }) {
   const [ids, setIds] = useState<Record<string, string | null>>(() => Object.fromEntries(tracks.map((t) => [t.id, t.certificateId])));
   const [error, setError] = useState<string | null>(null);
+  const celebrate = useCelebrate();
   const shown = own ? tracks : tracks.filter((t) => ids[t.id]);
   if (!shown.length) return null;
 
@@ -116,7 +113,7 @@ function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own:
     setError(null);
     const res = await fetch("/api/certificates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ track }) });
     const json = await res.json().catch(() => ({}));
-    if (res.ok) setIds((m) => ({ ...m, [track]: json.id }));
+    if (res.ok) { setIds((m) => ({ ...m, [track]: json.id })); celebrate({ kind: "badge", label: "Certificate" }); }
     else setError(json.error ?? "Couldn't claim the certificate.");
   };
 
@@ -188,7 +185,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
               </div>
               <div className="min-w-0">
                 <h1 className="font-serif text-lg text-bright truncate">{data.user.username}</h1>
-                <div className={`text-[10px] uppercase tracking-wider ${tier.color}`}>{tier.label}</div>
+                <div className={`text-[10px] uppercase tracking-wider ${tier.color}`}>{tier.label} · <span className="font-pixel text-[15px] normal-case tracking-normal">LV {levelFromXp(data.totalXp).level}</span></div>
               </div>
             </div>
             <div className="text-[11px] text-dim">Member since {memberSince}</div>

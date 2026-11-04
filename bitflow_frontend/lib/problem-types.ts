@@ -268,6 +268,8 @@ export interface SubmissionResult {
   submittedCode:  string;
   /** XP earned from this submission (0 if not first solve) */
   xpEarned:       number;
+  /** Your total XP after it (signed in only): shows when a level was crossed */
+  totalXp?:       number | null;
   /** Compile or runtime error message, if any */
   errorMessage?:  string;
   /** Your design's own signals on the first failing hidden test (wrong answers only). */

@@ -25,6 +25,8 @@ import type { DesignLanguage, SimulateResponse } from "@/lib/types";
 import { runSimulation, checkHealth, submitSolution } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
+import { rewardMoments } from "@/lib/pixel/rewards";
 import { vhdlStarter } from "@/lib/vhdl-starter";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ export interface UseProblemReturn {
 
 export function useProblem(problem: Problem): UseProblemReturn {
   const { user } = useAuth();
+  const celebrate = useCelebrate();
 
   // Pre-warm backend in background on problem page load
   useEffect(() => {
@@ -160,13 +163,14 @@ export function useProblem(problem: Problem): UseProblemReturn {
       const sub = await submitSolution<SubmissionResult>(problem.slug, designCode, testbenchCode, { language });
       setSubmission(sub);
       setRunState("submitted");
+      celebrate(...rewardMoments(sub));
       return sub;
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
       setRunState("error");
       return null;
     }
-  }, [runState, problem.slug, designCode, testbenchCode, language]);
+  }, [runState, problem.slug, designCode, testbenchCode, language, celebrate]);
 
   // ── Reset to starter code ─────────────────────────────────────────────────
 

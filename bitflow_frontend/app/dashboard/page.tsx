@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { levelFromXp } from "@/lib/levels";
+import { unseenBadges } from "@/lib/pixel/rewards";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 import { useAuth } from "../../hooks/useAuth";
@@ -587,7 +590,7 @@ function DashboardFooter() {
 }
 
 /* ── Types for fetched data ──────────────────────────────────────── */
-type ProfileStats = Pick<ProfileData, "totalXp" | "activity" | "totalActiveDays" | "maxStreak" | "totalSolved" | "totalProblems" | "recentAC" | "tracks">;
+type ProfileStats = Pick<ProfileData, "totalXp" | "activity" | "totalActiveDays" | "maxStreak" | "totalSolved" | "totalProblems" | "recentAC" | "tracks" | "badges">;
 type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number };
 
 const TITLE = "text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)]";
@@ -597,6 +600,17 @@ function SectionTitle({ children, action }: { children: React.ReactNode; action?
     <div className="flex items-baseline justify-between gap-3 mb-3">
       <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-ghost">{children}</h2>
       {action}
+    </div>
+  );
+}
+
+/** Total XP, the level in pixel lettering, and a bar to the next level. */
+function LevelValue({ xp }: { xp: number }) {
+  const { level, into, needed } = levelFromXp(xp);
+  return (
+    <div>
+      <span>{xp.toLocaleString()}</span> <span className="font-pixel text-[22px] text-phosphor/80">LV {level}</span>
+      <PixelBar value={into} max={needed} segments={12} height={5} className="mt-1" label={`Level ${level}: ${into} of ${needed} XP to level ${level + 1}`} />
     </div>
   );
 }
@@ -623,6 +637,7 @@ const ago = (iso: string) => {
 
 function DashboardContent() {
   const { user, logout } = useAuth();
+  const celebrate = useCelebrate();
   // undefined = loading, null = unavailable
   const [stats, setStats] = useState<ProfileStats | null | undefined>(undefined);
   const [daily, setDaily] = useState<Daily | null | undefined>(undefined);
@@ -639,7 +654,13 @@ function DashboardContent() {
     const load = () => {
       fetch("/api/profile")
         .then((r) => r.json())
-        .then((json) => setStats(json?.user ? json : null))
+        .then((json) => {
+          setStats(json?.user ? json : null);
+          // Badges earned since this browser last showed them get their moment now.
+          if (json?.user?.id && Array.isArray(json.badges)) {
+            try { celebrate(...unseenBadges(json.user.id, json.badges, window.localStorage)); } catch { /* storage blocked */ }
+          }
+        })
         .catch(() => setStats(null));
 
       const p = loadAcademyProgress();
@@ -712,7 +733,7 @@ function DashboardContent() {
             <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Hello, {name} 👋</div>
             <h1 className="font-serif text-3xl md:text-4xl mb-6">What will you go for today?</h1>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Stat label="XP" value={stats ? stats.totalXp.toLocaleString() : dash} tone="text-phosphor" />
+              <Stat label="XP" value={stats ? <LevelValue xp={stats.totalXp} /> : dash} tone="text-phosphor" />
               <Stat label="Problems solved" value={stats ? stats.totalSolved : dash} sub={stats ? `of ${stats.totalProblems}` : undefined} />
               <Stat label="Daily streak" value={daily ? `${daily.streak > 0 ? "🔥 " : ""}${daily.streak}` : dash} sub="days in a row" tone="text-warn" />
               <Stat label="Active days" value={stats ? stats.totalActiveDays : dash} sub={stats ? `best streak ${stats.maxStreak}d` : undefined} />

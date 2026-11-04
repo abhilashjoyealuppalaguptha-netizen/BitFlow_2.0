@@ -18,6 +18,7 @@ import { putBitstream } from "@/lib/bitstream-handoff";
 import { LESSONS, lessonBySlug, lessonIndex } from "@/lib/lab/lessons";
 import { UART_CYCLES, boardDesign, grade, missingParts, simHz, simParams, withParams, type GoalResult } from "@/lib/lab/run";
 import { doneLessons, loadDraft, markDone, saveDraft } from "@/lib/lab/progress";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 import { EMPTY_VIEW, type Addon, type BoardHandle, type BoardView } from "./Board3D";
 import { KEY_FACES, Keypad, ServoMeter, ShiftRegister595 } from "@/lib/lab/peripherals";
 import { VIEWS, viewFor, type ViewId } from "@/lib/lab/boards3d";
@@ -56,6 +57,7 @@ export default function LabLesson({ slug }: { slug: string }) {
   const [running, setRunning] = useState(true);
   const [results, setResults] = useState<GoalResult[] | null>(null);
   const [done, setDone] = useState(false);
+  const celebrate = useCelebrate();
   const [xpEarned, setXpEarned] = useState(0);
   const userId = useAuth().user?.id;
   const [log, setLog] = useState<string[]>([]);
@@ -296,6 +298,7 @@ export default function LabLesson({ slug }: { slug: string }) {
     const r = grade(lesson, n);
     setResults(r);
     if (r.every((g) => g.ok)) {
+      if (!done) celebrate({ kind: "win" });
       markDone(slug);
       setDone(true);
       void reportLesson({ kind: "lab", slug, done: true }).then(setXpEarned);

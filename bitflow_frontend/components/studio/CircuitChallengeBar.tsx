@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Circuit } from "@/lib/studio/circuit";
 import { type CircuitChallenge, type Grade, gradeCircuit } from "@/lib/studio/circuit-challenges";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 
 export default function CircuitChallengeBar({ ch, circuit, solved, onStartOver, onLoadSolution }: {
   ch: CircuitChallenge; circuit: Circuit; solved: boolean; onStartOver: () => void; onLoadSolution: (c: Circuit) => void;
@@ -17,6 +18,7 @@ export default function CircuitChallengeBar({ ch, circuit, solved, onStartOver, 
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState(false);
+  const celebrate = useCelebrate();
 
   const check = async () => {
     const g = gradeCircuit(ch, circuit);
@@ -32,6 +34,7 @@ export default function CircuitChallengeBar({ ch, circuit, solved, onStartOver, 
       else if (!data.grade?.ok) { setGrade(data.grade); }
       else {
         setDone(true);
+        if (data.xpAwarded) celebrate({ kind: "win" }, { kind: "xp", xp: data.xpAwarded });
         setNote(data.xpAwarded ? `+${data.xpAwarded} XP` : "You had already solved this one, so no more XP.");
       }
     } catch {
