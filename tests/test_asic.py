@@ -223,6 +223,16 @@ def test_counter_area_timing_power(client):
 
 
 @needs_asic
+def test_metrics_area_matches_asic(client):
+    """The area leaderboard's score (POST /metrics) is the same mapping /asic reports."""
+    r = client.post("/metrics", json={"design_v": COUNTER})
+    assert r.status_code == 200, r.text
+    m = r.json()
+    assert m["ok"] and m["gates"] > 0
+    assert m["areaUm2"] == _asic(client, design_v=COUNTER, period_ns=10)["areaUm2"]
+
+
+@needs_asic
 def test_too_fast_clock_violates(client):
     t = _asic(client, design_v=COUNTER, period_ns=0.5)["timing"]
     assert not t["setup"]["met"] and t["setup"]["slack"] < 0 and t["wnsNs"] < 0

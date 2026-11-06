@@ -325,7 +325,8 @@ def _run_script(design_v: str, script: str, finish) -> dict:
 def _metrics_sync(design_v: str) -> dict:
     def finish(tmpdir: str) -> dict:
         stat = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}")
-        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt")))}
+        from api.routes.asic import sky130_area   # lazy: asic.py is the heavier module
+        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt"))), "areaUm2": sky130_area(tmpdir)}
     return _run_script(design_v, METRICS_SCRIPT, finish)
 
 

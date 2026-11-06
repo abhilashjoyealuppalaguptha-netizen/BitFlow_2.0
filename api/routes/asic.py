@@ -74,6 +74,27 @@ tee -q -o stat.json stat -json -liberty {lib}
 write_verilog -noattr -noexpr -nohex -nodec netlist.v
 """
 
+def sky130_area(tmpdir: str) -> Optional[float]:
+    """
+    Standard-cell area in µm² of tmpdir/design.v on Sky130 HD, mapped as /asic maps it
+    (no timing). For the area leaderboard (POST /metrics); None when the library or yosys is
+    missing or synthesis fails, so a missing score never fails a submission.
+    """
+    if not os.path.exists(LIB):
+        return None
+    _write(tmpdir, "latch_map.v", LATCH_MAP)
+    script = SYNTH_SCRIPT.format(elaborate="synth -auto-top -flatten", lib=LIB, dont_use=DONT_USE, period_ps=10000)
+    _write(tmpdir, "area.ys", script.replace("write_verilog -noattr -noexpr -nohex -nodec netlist.v\n", "")
+                                    .replace("stat.json", "area.json"))
+    try:
+        rc, _ = _run_limited(["yosys", "-q", "-s", "area.ys"], cwd=tmpdir, timeout=SYNTH_TIMEOUT_SECONDS)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if rc != 0:
+        return None
+    return summarize_cells(json.loads(_read(os.path.join(tmpdir, "area.json")) or "{}"))["areaUm2"]
+
+
 _CLOCK_NAMES = re.compile(r"^(clk|clock|clk_i|i_clk|clk_in|sys_clk|clock_i)$", re.I)
 _SAFE_NAME   = re.compile(r"^[A-Za-z_]\w*$")
 
