@@ -21,12 +21,13 @@ import subprocess
 import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from api.config import settings
 from api.jwt_auth import verify_jwt
-from api.routes.simulate import _sim_slots
+from api.lanes import heavy, light
+from api.result_cache import cached_call
 from api.sandbox import _run_limited
 from api.utils import check_source_size, cleanup_workspace, create_workspace, read_vcd
 
@@ -267,10 +268,10 @@ def _synthesize_sync(design_v: str) -> dict:
 
 
 @router.post("", dependencies=[Depends(verify_jwt)], summary="Synthesize a design with Yosys")
-async def synthesize(body: SynthesizeRequest) -> dict:
+async def synthesize(body: SynthesizeRequest) -> Response:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_synthesize_sync, body.design_v)
+    return await cached_call("synthesize", {"d": body.design_v}, light,
+                             lambda: asyncio.to_thread(_synthesize_sync, body.design_v), lambda r: r.get("ok") is True)
 
 
 # =============================================================================
@@ -330,10 +331,10 @@ def _metrics_sync(design_v: str) -> dict:
 
 
 @metrics_router.post("", dependencies=[Depends(verify_jwt)], summary="Gate count, flip-flop bits and logic depth")
-async def metrics(body: SynthesizeRequest) -> dict:
+async def metrics(body: SynthesizeRequest) -> Response:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_metrics_sync, body.design_v)
+    return await cached_call("metrics", {"d": body.design_v}, light,
+                             lambda: asyncio.to_thread(_metrics_sync, body.design_v), lambda r: r.get("ok") is True)
 
 
 # =============================================================================
@@ -392,10 +393,10 @@ def _board_sync(design_v: str) -> dict:
 
 
 @board_router.post("", dependencies=[Depends(verify_jwt)], summary="Gate-level netlist for the virtual board")
-async def board(body: SynthesizeRequest) -> dict:
+async def board(body: SynthesizeRequest) -> Response:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_board_sync, body.design_v)
+    return await cached_call("board", {"d": body.design_v}, light,
+                             lambda: asyncio.to_thread(_board_sync, body.design_v), lambda r: r.get("ok") is True)
 
 
 # =============================================================================
@@ -520,10 +521,10 @@ def _fpga_sync(design_v: str, family: str) -> dict:
 
 
 @fpga_router.post("", dependencies=[Depends(verify_jwt)], summary="FPGA resource estimate (iCE40 or Xilinx 7-series)")
-async def fpga(body: FpgaRequest) -> dict:
+async def fpga(body: FpgaRequest) -> Response:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_fpga_sync, body.design_v, body.family)
+    return await cached_call("fpga", {"d": body.design_v, "f": body.family}, heavy,
+                             lambda: asyncio.to_thread(_fpga_sync, body.design_v, body.family), lambda r: r.get("ok") is True)
 
 
 # =============================================================================
@@ -633,8 +634,9 @@ def _equivalence_sync(gold_v: str, gate_v: str, max_cycles: int) -> dict:
 
 @equivalence_router.post("", dependencies=[Depends(verify_jwt)],
                          summary="Shortest input sequence (from reset) where two designs' outputs differ")
-async def equivalence(body: EquivalenceRequest) -> dict:
+async def equivalence(body: EquivalenceRequest) -> Response:
     check_source_size(body.gold_v, settings.max_source_bytes, "gold_v")
     check_source_size(body.gate_v, settings.max_source_bytes, "gate_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_equivalence_sync, body.gold_v, body.gate_v, body.max_cycles)
+    return await cached_call("equivalence", {"g": body.gold_v, "t": body.gate_v, "n": body.max_cycles}, heavy,
+                             lambda: asyncio.to_thread(_equivalence_sync, body.gold_v, body.gate_v, body.max_cycles),
+                             lambda r: r.get("status") in ("differs", "no_difference"))

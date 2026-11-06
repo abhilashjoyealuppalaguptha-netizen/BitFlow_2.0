@@ -64,7 +64,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Simulations run natively via iverilog/vvp subprocess — no Docker daemon needed.
     logger.info("Native simulation mode: using iverilog/vvp subprocess directly")
 
+    # Warm the tools in the background: the server answers requests at once, and the first real
+    # run no longer pays for a cold start (api/warmup.py; WARMUP=false turns it off).
+    warm_task = None
+    if settings.warmup:
+        import asyncio
+        from api.warmup import warm_up
+        warm_task = asyncio.create_task(warm_up())
+
     yield  # ← application runs here
+
+    if warm_task is not None and not warm_task.done():
+        warm_task.cancel()
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
     logger.info("Verilog Sandbox API shutting down")

@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from api.config import settings
 from api.jwt_auth import verify_jwt
-from api.routes.simulate import _sim_slots
+from api.lanes import heavy
 from api.sandbox import _run_limited
 from api.utils import check_source_size, cleanup_workspace, create_workspace
 
@@ -463,5 +463,5 @@ async def asic(body: AsicRequest) -> dict:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
     if body.testbench_v:
         check_source_size(body.testbench_v, settings.max_source_bytes, "testbench_v")
-    async with _sim_slots:
+    async with heavy:
         return await asyncio.to_thread(_asic_sync, body)
