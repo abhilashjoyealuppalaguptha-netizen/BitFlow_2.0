@@ -74,14 +74,100 @@ function tryOrder(entries: PoolEntry[]): string[] {
   return order;
 }
 
+/** Strongest instance first (ties in random order): for jobs that are slow on a weak host. */
+function strongestOrder(entries: PoolEntry[]): string[] {
+  return entries
+    .map((e) => ({ e, tie: Math.random() }))
+    .sort((a, b) => b.e.weight - a.e.weight || a.tie - b.tie)
+    .map(({ e }) => e.url);
+}
+
+/**
+ * Heavy jobs (Verilator builds, VHDL and Python testbenches, formal checks, FPGA place-and-route,
+ * equivalence, ASIC) take many seconds even on a good server and tens on a 0.1-vCPU one, so they go
+ * to the strongest instance first. Everything else is light: Icarus runs, style checks, quick Yosys jobs.
+ */
+export function jobClass(path: string, body: unknown): "light" | "heavy" {
+  if (["/fpga", "/equivalence", "/formal", "/asic"].includes(path)) return "heavy";
+  if (path === "/simulate") {
+    const b = (body ?? {}) as Partial<SimulateBody>;
+    const plain = (!b.simulator || b.simulator === "icarus") && (!b.design_language || b.design_language === "verilog")
+      && (!b.testbench_language || b.testbench_language === "verilog");
+    return plain ? "light" : "heavy";
+  }
+  return "light";
+}
+
+export interface FailoverOptions {
+  /** Try the strongest instance first instead of drawing by weight. */
+  strongestFirst?: boolean;
+  /**
+   * Hedge: if an instance hasn't answered after this many ms, also ask the next one and take the
+   * first good answer. For light jobs only: a sleeping free instance can hold a request for a minute,
+   * while a light job normally answers in under a second. 0 or unset = no hedging.
+   */
+  hedgeMs?: number;
+}
+
+/**
+ * Race the instances in `urls` order: start the first; start the next when one throws or answers
+ * 502/503, or when `hedgeMs` passes without an answer; the first non-502/503 answer wins and the
+ * others are cancelled. If every instance fails, the last failure (response or error) is final.
+ */
+function hedgedFetch(urls: string[], path: string, init: RequestInit | undefined, hedgeMs: number): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const controllers: AbortController[] = [];
+    let launched = 0, inflight = 0, done = false;
+    let lastRes: Response | undefined, lastErr: unknown;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const allFailed = () => { done = true; clearTimeout(timer); lastRes ? resolve(lastRes) : reject(lastErr); };
+    const win = (idx: number, res: Response) => {
+      done = true; clearTimeout(timer);
+      controllers.forEach((c, i) => { if (i !== idx) c.abort(); });   // never abort the winner: its body is still to be read
+      resolve(res);
+    };
+    const launch = (): void => {
+      if (done || launched >= urls.length) return;
+      const idx = launched++;
+      const ac = new AbortController();
+      controllers[idx] = ac;
+      inflight++;
+      clearTimeout(timer);
+      if (launched < urls.length) timer = setTimeout(launch, hedgeMs);
+      fetch(`${urls[idx]}${path}`, { ...init, signal: ac.signal }).then(
+        (res) => {
+          inflight--;
+          if (done) return;
+          if (!TRY_NEXT.has(res.status)) return win(idx, res);
+          lastRes = res;
+          if (launched < urls.length) launch(); else if (inflight === 0) allFailed();
+        },
+        (err) => {
+          inflight--;
+          if (done) return;
+          lastErr = err;
+          if (launched < urls.length) launch(); else if (inflight === 0) allFailed();
+        },
+      );
+    };
+    launch();
+  });
+}
+
 /**
  * fetch(`${url}${path}`) on the instances in turn, the first chosen at random by weight (a
- * plain URL has weight 1): move on when the request throws or answers 502/503. The last
- * instance's answer (or error) is final.
+ * plain URL has weight 1) or, with `strongestFirst`, the strongest: move on when the request throws or
+ * answers 502/503. The last instance's answer (or error) is final. With `hedgeMs` the next instance is
+ * also asked when the current one is slow (see FailoverOptions).
  */
-export async function fetchWithFailover(pool: (string | PoolEntry)[], path: string, init?: RequestInit): Promise<Response> {
+export async function fetchWithFailover(
+  pool: (string | PoolEntry)[], path: string, init?: RequestInit, opts: FailoverOptions = {},
+): Promise<Response> {
   if (!pool.length) throw new Error("No backend URL");
-  const urls = tryOrder(pool.map((e) => (typeof e === "string" ? { url: e, weight: 1 } : e)));
+  const entries = pool.map((e) => (typeof e === "string" ? { url: e, weight: 1 } : e));
+  const urls = opts.strongestFirst ? strongestOrder(entries) : tryOrder(entries);
+  if (opts.hedgeMs && opts.hedgeMs > 0 && urls.length > 1) return hedgedFetch(urls, path, init, opts.hedgeMs);
   for (let i = 0; ; i++) {
     const isLast = i === urls.length - 1;
     try {
@@ -152,6 +238,8 @@ export function styleOnBackend(action: "lint" | "format", body: unknown): Promis
 }
 
 async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
+  const heavy = jobClass(path, body) === "heavy";
+  const hedgeMs = Number(process.env.BACKEND_HEDGE_MS ?? 10_000);   // 0 turns hedging off
   const res = await fetchWithFailover(backendPool(), path, {
     method: "POST",
     headers: {
@@ -159,7 +247,7 @@ async function postToBackend(path: string, body: unknown): Promise<{ status: num
       Authorization:  `Bearer ${generateBackendJwt()}`,
     },
     body: JSON.stringify(body),
-  });
+  }, heavy ? { strongestFirst: true } : { hedgeMs: Number.isFinite(hedgeMs) ? hedgeMs : 10_000 });
 
   const text = await res.text();
   let data: any;

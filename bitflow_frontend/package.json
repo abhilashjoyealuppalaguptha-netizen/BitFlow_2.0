@@ -58,6 +58,8 @@
     "check-leaks": "tsx scripts/check-bundle-leaks.ts",
     "check-backend-pool": "tsx scripts/backend-pool.check.ts",
     "check-sim-retry": "tsx scripts/sim-retry.check.ts",
+    "check-hedge": "tsx scripts/hedge.check.ts",
+    "check-health-race": "tsx scripts/health-race.check.ts",
     "check-lab": "tsx scripts/lab.check.ts",
     "check-hardware": "tsx scripts/hardware.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
