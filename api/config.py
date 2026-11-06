@@ -61,6 +61,24 @@ class Settings(BaseSettings):
         ge=1,
         description="Simulations run at once; further requests wait their turn.",
     )
+    max_heavy_simulations: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Heavy jobs (Verilator, cocotb, VHDL testbenches, formal, FPGA place-and-route, equivalence, "
+            "ASIC) run at once in their own lane, so a 30 s build never blocks a quick Icarus run. "
+            "0 = share the light pool, as before (right for small hosts: less memory at once)."
+        ),
+    )
+    result_cache_mb: int = Field(
+        default=24,
+        ge=0,
+        description="Memory for the result cache: identical requests are answered from memory. 0 disables it.",
+    )
+    warmup: bool = Field(
+        default=True,
+        description="After startup, run one tiny job in the background so the first real request isn't a cold start.",
+    )
 
     # ── Container resource caps ───────────────────────────────────────────────
     mem_limit: str = Field(

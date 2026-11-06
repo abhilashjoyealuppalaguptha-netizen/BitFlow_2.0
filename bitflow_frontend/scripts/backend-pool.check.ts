@@ -1,6 +1,6 @@
 /** scripts/backend-pool.check.ts — self-check for BACKEND_URLS and failover in lib/backend.ts (npx tsx scripts/backend-pool.check.ts). */
 import assert from "node:assert/strict";
-import { backendUrls, fetchWithFailover } from "../lib/backend";
+import { backendPool, backendUrls, fetchWithFailover } from "../lib/backend";
 
 const env = process.env as Record<string, string | undefined>;
 
@@ -12,6 +12,15 @@ env.BACKEND_URLS = " https://a.example/ , ,https://b.example// ";
 assert.deepEqual(backendUrls(), ["https://a.example", "https://b.example"]);
 env.BACKEND_URLS = " , ";
 assert.deepEqual(backendUrls(), ["http://single:8000"], "an empty list falls back to BACKEND_URL");
+
+// Weights: `url|weight`, default 1; backendUrls() stays plain URLs
+env.BACKEND_URLS = "https://big.example|8, https://a.example/ ,https://b.example|0,https://c.example|x";
+assert.deepEqual(backendPool(), [
+  { url: "https://big.example", weight: 8 }, { url: "https://a.example", weight: 1 },
+  { url: "https://b.example", weight: 1 }, { url: "https://c.example", weight: 1 },
+], "bad or zero weights count as 1");
+assert.deepEqual(backendUrls(), ["https://big.example", "https://a.example", "https://b.example", "https://c.example"]);
+delete env.BACKEND_URLS;
 
 // Stub fetch: each host answers with a fixed status, or throws for "down"
 type Answer = number | "down";
@@ -61,6 +70,26 @@ async function run(answers: Record<string, Answer>) {
     seen.add((await res.json()).host);
   }
   assert.deepEqual([...seen].sort(), ["a", "b"]);
+
+  // Weighted share: weight 8 against 1 + 1 should take about 80% of the first tries
+  const weighted = [{ url: "http://a", weight: 8 }, { url: "http://b", weight: 1 }, { url: "http://c", weight: 1 }];
+  hosts = { a: 200, b: 200, c: 200 };
+  const firsts: Record<string, number> = { a: 0, b: 0, c: 0 };
+  for (let i = 0; i < 3000; i++) {
+    calls.length = 0;
+    await fetchWithFailover(weighted, "/simulate");
+    firsts[calls[0]]++;
+  }
+  assert.ok(firsts.a > 2200 && firsts.a < 2600, `weight 8 of 10 got ${firsts.a} of 3000`);
+  assert.ok(firsts.b > 150 && firsts.c > 150, "light instances still get traffic");
+  // Failover still reaches every instance once, whatever the weights, and the heavy one being down is survived
+  for (const dead of ["a", "b", "c"]) {
+    hosts = { a: 200, b: 200, c: 200, [dead]: "down" };
+    for (let i = 0; i < 50; i++) assert.equal((await fetchWithFailover(weighted, "/simulate")).status, 200);
+  }
+  hosts = { a: 503, b: 503, c: 503 }; calls.length = 0;
+  assert.equal((await fetchWithFailover(weighted, "/simulate")).status, 503);
+  assert.deepEqual([...calls].sort(), ["a", "b", "c"], "each weighted instance tried once");
 
   // One instance: a plain fetch, its answer as is
   hosts = { a: 503 }; calls.length = 0;

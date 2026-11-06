@@ -18,13 +18,14 @@ import subprocess
 import time
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from api.config import settings
 from api.jwt_auth import verify_jwt
 from api.langs import top_module, vhdl_to_verilog
-from api.routes.simulate import _sim_slots
+from api.lanes import heavy, light
+from api.result_cache import cached_call
 from api.sandbox import _run_limited
 from api.utils import check_source_size, cleanup_workspace, create_workspace, read_vcd
 
@@ -71,10 +72,11 @@ def _vhdl_sync(design_vhdl: str) -> dict:
 
 
 @vhdl_router.post("", dependencies=[Depends(verify_jwt)], summary="Convert a VHDL design to Verilog (GHDL)")
-async def vhdl(body: VhdlRequest) -> dict:
+async def vhdl(body: VhdlRequest) -> Response:
     check_source_size(body.design_vhdl, settings.max_source_bytes, "design_vhdl")
-    async with _sim_slots:
-        return await asyncio.to_thread(_vhdl_sync, body.design_vhdl)
+    return await cached_call("vhdl", {"v": body.design_vhdl}, light,
+                             lambda: asyncio.to_thread(_vhdl_sync, body.design_vhdl),
+                             lambda r: r.get("ok") is True)
 
 
 # =============================================================================
@@ -192,9 +194,11 @@ def _formal_sync(design_v: str, harness_v: str | None, mode: str, depth: int) ->
 
 @formal_router.post("", dependencies=[Depends(verify_jwt)],
                     summary="Check assertions (bmc), prove them by induction (prove) or reach covers (cover)")
-async def formal(body: FormalRequest) -> dict:
+async def formal(body: FormalRequest) -> Response:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
     if body.harness_v:
         check_source_size(body.harness_v, settings.max_source_bytes, "harness_v")
-    async with _sim_slots:
-        return await asyncio.to_thread(_formal_sync, body.design_v, body.harness_v, body.mode, body.depth)
+    # Only a solver verdict is kept; "unknown"/"error" can come from a timeout on a busy machine.
+    return await cached_call("formal", {"d": body.design_v, "h": body.harness_v, "m": body.mode, "n": body.depth}, heavy,
+                             lambda: asyncio.to_thread(_formal_sync, body.design_v, body.harness_v, body.mode, body.depth),
+                             lambda r: r.get("status") in ("passed", "failed"))

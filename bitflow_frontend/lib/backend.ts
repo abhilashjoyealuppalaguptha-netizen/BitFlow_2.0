@@ -28,17 +28,32 @@ export function backendUrl(): string {
   return "http://127.0.0.1:8000";
 }
 
+/** One simulator instance and its share of the traffic. */
+export interface PoolEntry { url: string; weight: number }
+
 /**
- * Every simulator instance to spread requests over. BACKEND_URLS (comma-separated) lists
- * several identical deployments, e.g. two free Render services; otherwise it is just
- * backendUrl(). The API is stateless, so any instance can serve any request.
+ * Every simulator instance to spread requests over, with weights. BACKEND_URLS
+ * (comma-separated) lists several identical deployments; an entry may end in `|weight`
+ * (default 1) so a stronger host gets a bigger share, e.g.
+ *   https://sim.example.com|8,https://free-1.onrender.com,https://free-2.onrender.com
+ * Without BACKEND_URLS it is just backendUrl(). The API is stateless, so any instance can
+ * serve any request.
  */
-export function backendUrls(): string[] {
-  const urls = (process.env.BACKEND_URLS ?? "")
+export function backendPool(): PoolEntry[] {
+  const pool = (process.env.BACKEND_URLS ?? "")
     .split(",")
-    .map((u) => u.trim().replace(/\/+$/, ""))
-    .filter(Boolean);
-  return urls.length ? urls : [backendUrl().replace(/\/+$/, "")];
+    .map((entry) => {
+      const [url, w] = entry.trim().split("|");
+      const weight = Number(w);
+      return { url: (url ?? "").trim().replace(/\/+$/, ""), weight: Number.isFinite(weight) && weight > 0 ? weight : 1 };
+    })
+    .filter((e) => e.url);
+  return pool.length ? pool : [{ url: backendUrl().replace(/\/+$/, ""), weight: 1 }];
+}
+
+/** The instance URLs alone (health checks wake all of them, whatever their weight). */
+export function backendUrls(): string[] {
+  return backendPool().map((e) => e.url);
 }
 
 // 502/503 come from the host while an instance deploys or fails to wake: another instance can
@@ -46,17 +61,117 @@ export function backendUrls(): string[] {
 // running it again elsewhere would double the work.
 const TRY_NEXT = new Set([502, 503]);
 
+/** Instances in the order to try them: weighted random draws without replacement. */
+function tryOrder(entries: PoolEntry[]): string[] {
+  const left = [...entries];
+  const order: string[] = [];
+  while (left.length) {
+    let r = Math.random() * left.reduce((sum, e) => sum + e.weight, 0);
+    let i = 0;
+    while (i < left.length - 1 && (r -= left[i].weight) >= 0) i++;
+    order.push(left.splice(i, 1)[0].url);
+  }
+  return order;
+}
+
+/** Strongest instance first (ties in random order): for jobs that are slow on a weak host. */
+function strongestOrder(entries: PoolEntry[]): string[] {
+  return entries
+    .map((e) => ({ e, tie: Math.random() }))
+    .sort((a, b) => b.e.weight - a.e.weight || a.tie - b.tie)
+    .map(({ e }) => e.url);
+}
+
 /**
- * fetch(`${url}${path}`) on the instances in turn, starting at a random one: move on when the
- * request throws or answers 502/503. The last instance's answer (or error) is final.
+ * Heavy jobs (Verilator builds, VHDL and Python testbenches, formal checks, FPGA place-and-route,
+ * equivalence, ASIC) take many seconds even on a good server and tens on a 0.1-vCPU one, so they go
+ * to the strongest instance first. Everything else is light: Icarus runs, style checks, quick Yosys jobs.
  */
-export async function fetchWithFailover(urls: string[], path: string, init?: RequestInit): Promise<Response> {
-  if (!urls.length) throw new Error("No backend URL");
-  const start = Math.floor(Math.random() * urls.length);
+export function jobClass(path: string, body: unknown): "light" | "heavy" {
+  if (["/fpga", "/equivalence", "/formal", "/asic"].includes(path)) return "heavy";
+  if (path === "/simulate") {
+    const b = (body ?? {}) as Partial<SimulateBody>;
+    const plain = (!b.simulator || b.simulator === "icarus") && (!b.design_language || b.design_language === "verilog")
+      && (!b.testbench_language || b.testbench_language === "verilog");
+    return plain ? "light" : "heavy";
+  }
+  return "light";
+}
+
+export interface FailoverOptions {
+  /** Try the strongest instance first instead of drawing by weight. */
+  strongestFirst?: boolean;
+  /**
+   * Hedge: if an instance hasn't answered after this many ms, also ask the next one and take the
+   * first good answer. For light jobs only: a sleeping free instance can hold a request for a minute,
+   * while a light job normally answers in under a second. 0 or unset = no hedging.
+   */
+  hedgeMs?: number;
+}
+
+/**
+ * Race the instances in `urls` order: start the first; start the next when one throws or answers
+ * 502/503, or when `hedgeMs` passes without an answer; the first non-502/503 answer wins and the
+ * others are cancelled. If every instance fails, the last failure (response or error) is final.
+ */
+function hedgedFetch(urls: string[], path: string, init: RequestInit | undefined, hedgeMs: number): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const controllers: AbortController[] = [];
+    let launched = 0, inflight = 0, done = false;
+    let lastRes: Response | undefined, lastErr: unknown;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const allFailed = () => { done = true; clearTimeout(timer); lastRes ? resolve(lastRes) : reject(lastErr); };
+    const win = (idx: number, res: Response) => {
+      done = true; clearTimeout(timer);
+      controllers.forEach((c, i) => { if (i !== idx) c.abort(); });   // never abort the winner: its body is still to be read
+      resolve(res);
+    };
+    const launch = (): void => {
+      if (done || launched >= urls.length) return;
+      const idx = launched++;
+      const ac = new AbortController();
+      controllers[idx] = ac;
+      inflight++;
+      clearTimeout(timer);
+      if (launched < urls.length) timer = setTimeout(launch, hedgeMs);
+      fetch(`${urls[idx]}${path}`, { ...init, signal: ac.signal }).then(
+        (res) => {
+          inflight--;
+          if (done) return;
+          if (!TRY_NEXT.has(res.status)) return win(idx, res);
+          lastRes = res;
+          if (launched < urls.length) launch(); else if (inflight === 0) allFailed();
+        },
+        (err) => {
+          inflight--;
+          if (done) return;
+          lastErr = err;
+          if (launched < urls.length) launch(); else if (inflight === 0) allFailed();
+        },
+      );
+    };
+    launch();
+  });
+}
+
+/**
+ * fetch(`${url}${path}`) on the instances in turn, the first chosen at random by weight (a
+ * plain URL has weight 1) or, with `strongestFirst`, the strongest: move on when the request throws or
+ * answers 502/503. The last instance's answer (or error) is final. With `hedgeMs` the next instance is
+ * also asked when the current one is slow (see FailoverOptions).
+ */
+export async function fetchWithFailover(
+  pool: (string | PoolEntry)[], path: string, init?: RequestInit, opts: FailoverOptions = {},
+): Promise<Response> {
+  if (!pool.length) throw new Error("No backend URL");
+  const entries = pool.map((e) => (typeof e === "string" ? { url: e, weight: 1 } : e));
+  const urls = opts.strongestFirst ? strongestOrder(entries) : tryOrder(entries);
+  if (opts.hedgeMs && opts.hedgeMs > 0 && urls.length > 1) return hedgedFetch(urls, path, init, opts.hedgeMs);
   for (let i = 0; ; i++) {
     const isLast = i === urls.length - 1;
     try {
-      const res = await fetch(`${urls[(start + i) % urls.length]}${path}`, init);
+      const res = await fetch(`${urls[i]}${path}`, init);
       if (isLast || !TRY_NEXT.has(res.status)) return res;
     } catch (err) {
       if (isLast) throw err;
@@ -123,14 +238,16 @@ export function styleOnBackend(action: "lint" | "format", body: unknown): Promis
 }
 
 async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
-  const res = await fetchWithFailover(backendUrls(), path, {
+  const heavy = jobClass(path, body) === "heavy";
+  const hedgeMs = Number(process.env.BACKEND_HEDGE_MS ?? 10_000);   // 0 turns hedging off
+  const res = await fetchWithFailover(backendPool(), path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization:  `Bearer ${generateBackendJwt()}`,
     },
     body: JSON.stringify(body),
-  });
+  }, heavy ? { strongestFirst: true } : { hedgeMs: Number.isFinite(hedgeMs) ? hedgeMs : 10_000 });
 
   const text = await res.text();
   let data: any;

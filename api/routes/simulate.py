@@ -27,7 +27,7 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
 from api.config import settings
 from api.exceptions import InvalidSourceError
@@ -41,13 +41,15 @@ from api.utils import (
     write_source_files,
 )
 from api.jwt_auth import verify_jwt
+from api.lanes import lane_for_simulation, light
+from api.result_cache import finish, lookup
 
 logger  = logging.getLogger(__name__)
 router  = APIRouter(prefix="/simulate", tags=["Simulation"])
 
-# Caps CPU-heavy iverilog/vvp runs per API process; extra requests queue here.
+# Caps CPU-heavy runs per API process; extra requests queue in their lane (api/lanes.py).
 # ponytail: per-process limit — with several API replicas, use a shared queue.
-_sim_slots = asyncio.Semaphore(settings.max_concurrent_simulations)
+_sim_slots = light   # the light lane; kept under this name for callers and tests
 
 
 # =============================================================================
@@ -87,7 +89,7 @@ async def _execute_simulation(
 
         # Run the simulation (waits for a free slot first).
         t_queued = time.monotonic()
-        async with _sim_slots:
+        async with lane_for_simulation(design_language, testbench_language, simulator):
             queue_ms = (time.monotonic() - t_queued) * 1000
             result = await run_simulation(tmpdir, workspace_id, timeout, lint, design_language, testbench_language, simulator)
 
@@ -153,7 +155,7 @@ async def _execute_simulation(
         503: {"description": "Docker daemon unavailable or image not found."},
     },
 )
-async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
+async def simulate_json(body: SimulateJsonRequest) -> Response:
     """
     **POST /simulate**
 
@@ -185,8 +187,19 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
     if body.testbench_language == "python" and not settings.cocotb_enabled:
         raise InvalidSourceError("Python (cocotb) testbenches are disabled on this server.")
 
-    return await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint, body.files,
-                                     body.design_language, body.testbench_language, body.simulator)
+    # Identical requests (re-running the same code, everyone's starter code) are answered from memory.
+    # Python (cocotb) testbenches seed from the clock, so they are never cached.
+    key, hit = lookup("simulate", {
+        "d": body.design_v, "t": body.testbench_v, "timeout": timeout, "lint": body.lint, "files": body.files or {},
+        "dl": body.design_language, "tl": body.testbench_language, "sim": body.simulator,
+    }, use_cache=body.testbench_language != "python")
+    if hit is not None:
+        return hit
+
+    result = await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint, body.files,
+                                       body.design_language, body.testbench_language, body.simulator)
+    # Only definite answers: a timeout or infrastructure error depends on how busy this machine was.
+    return finish(result, key, str(getattr(result.status, "value", result.status)) in ("success", "compile_error"))
 
 
 # =============================================================================
