@@ -14,6 +14,14 @@ JWT_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
 fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
+# BBR congestion control: better throughput over the ~200 ms path between Sydney and Vercel in Virginia
+# (waveforms travel in the replies).
+cat > /etc/sysctl.d/99-bitflow.conf <<'EOF'
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+sysctl --system || true
+
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y docker.io docker-compose-v2 git
@@ -26,6 +34,8 @@ echo "DOMAIN=$DOMAIN" > .env
 cat > api.env <<EOF
 JWT_PUBLIC_KEY='$JWT_PUBLIC_KEY'
 MAX_CONCURRENT_SIMULATIONS=2
+MAX_HEAVY_SIMULATIONS=1
+RESULT_CACHE_MB=256
 TIMEOUT_SECONDS=30
 EOF
 
