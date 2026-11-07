@@ -21,6 +21,7 @@
     "check-verification": "tsx scripts/verification.check.ts",
     "check-pixel": "tsx scripts/pixel.check.ts",
     "check-asic-path": "tsx scripts/asic-path.check.ts",
+    "check-icarus": "tsx scripts/icarus.check.ts",
     "check-waveform-diff": "tsx scripts/waveform-diff.check.ts",
     "check-vhdl-starter": "tsx scripts/vhdl-starter.check.ts",
     "check-bitstream": "tsx scripts/bitstream.check.ts",

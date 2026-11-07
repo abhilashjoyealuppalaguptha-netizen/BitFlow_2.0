@@ -750,7 +750,7 @@ function SandboxContent() {
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"], ["python", "Python (cocotb)"]]} onChange={setTestbenchLanguage} />
           {testbenchLanguage === "verilog" && (
             <LanguageSelect<Simulator> label="Simulator" value={simulator} disabled={isRunning}
-              options={[["icarus", "Icarus (fast)"], ["verilator", "Verilator: assertions + coverage"]]} onChange={setSimulator} />
+              options={[["browser", "Icarus · in your browser"], ["icarus", "Icarus · server"], ["verilator", "Verilator: assertions + coverage"]]} onChange={setSimulator} />
           )}
           {(result?.coverage || (result?.assertions?.length ?? 0) > 0) && (
             <button onClick={() => setCoverageOpen(true)} title="Coverage and assertion results of the last Verilator run"
