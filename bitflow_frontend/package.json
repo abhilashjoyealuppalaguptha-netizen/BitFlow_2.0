@@ -23,6 +23,7 @@
     "check-asic-path": "tsx scripts/asic-path.check.ts",
     "check-icarus": "tsx scripts/icarus.check.ts",
     "check-wave-nav": "tsx scripts/wave-nav.check.ts",
+    "check-schematic": "tsx scripts/schematic.check.ts",
     "check-waveform-diff": "tsx scripts/waveform-diff.check.ts",
     "check-vhdl-starter": "tsx scripts/vhdl-starter.check.ts",
     "check-bitstream": "tsx scripts/bitstream.check.ts",

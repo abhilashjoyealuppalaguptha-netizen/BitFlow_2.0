@@ -44,6 +44,14 @@ export function setVerilogContext(files: SourceFile[], h: ProjectHandlers = {}) 
   if (monacoRef) syncModels(monacoRef);
 }
 
+/** The cursor's line in the editor showing this project file, or null when it isn't on screen. */
+export function cursorLine(name: string): number | null {
+  const monaco = monacoRef;
+  if (!monaco) return null;
+  const uri = monaco.Uri.parse(uriOf(name)).toString();
+  return monaco.editor.getEditors().find((e) => e.getModel()?.uri.toString() === uri)?.getPosition()?.lineNumber ?? null;
+}
+
 /** Show file:line in the project's editors (switching tab if needed); false if the file isn't in the project. */
 export function revealInProject(name: string, line: number, column = 1): boolean {
   const monaco = monacoRef;

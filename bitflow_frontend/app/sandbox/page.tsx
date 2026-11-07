@@ -80,7 +80,7 @@ import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import PixelLoader from "@/components/pixel/PixelLoader";
 import ProjectsMenu                   from "@/components/ProjectsMenu";
-import { revealInProject, setVerilogContext, uriOf } from "@/lib/verilog-monaco";
+import { cursorLine, revealInProject, setVerilogContext, uriOf } from "@/lib/verilog-monaco";
 import { driverOf }                   from "@/lib/verilog-lang";
 import { compileInBrowser }           from "@/lib/sim/browser-sim";
 import { generateTestbench, parseModule } from "@/lib/studio/tbgen";
@@ -435,6 +435,16 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  // Cross-probing with the schematic: Yosys sees one combined design.v; map its lines to and from the files.
+  const synthProject = useMemo(() => combineDesign(designCode, extraFiles), [designCode, extraFiles]);
+  const [synthCursor, setSynthCursor] = useState<{ file: string; line: number } | null>(null);
+  useEffect(() => {
+    if (!synthOpen) return;
+    const name = activeFile;
+    const line = cursorLine(name);
+    const at = line === null ? null : synthProject.place(name, line);
+    setSynthCursor(at === null ? null : { file: "design.v", line: at });
+  }, [synthOpen]);  // eslint-disable-line react-hooks/exhaustive-deps
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [asicOpen, setAsicOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -1012,7 +1022,14 @@ function SandboxContent() {
        * State (chat history) lives in useAI inside AIAssistantPanel so it
        * survives open/close cycles.
        */}
-      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage}
+        cursor={designLanguage === "verilog" ? synthCursor : null}
+        describe={(loc) => { const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line }; return `${at.file}:${at.line}`; }}
+        onOpenSource={designLanguage === "verilog" ? (loc) => {
+          const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line };
+          setSynthOpen(false);
+          setTimeout(() => revealInProject(at.file, at.line), 0);
+        } : undefined} />
       <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
       <AsicPanel isOpen={asicOpen} onClose={() => setAsicOpen(false)} designCode={projectDesign} language={designLanguage}
                  testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
