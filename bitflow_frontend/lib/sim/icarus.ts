@@ -29,6 +29,7 @@ export interface IcarusRequest {
   design: string;
   testbench: string;
   files?: Record<string, string>;   // $readmemh data and the like, next to design.v
+  compileOnly?: boolean;            // stop after compiling: the editor's live check
 }
 
 export const MAX_OUTPUT = 1_000_000;            // characters of terminal output kept
@@ -58,6 +59,14 @@ export function cleanLines(lines: string[]): string[] {
   return lines
     .filter((l) => !NOISE.test(l))
     .map((l) => l.replace(/(^|[\s(])\/([\w.-]+\.s?v:\d+)/g, "$1$2"));
+}
+
+/**
+ * A system task this build lacks: it links system.vpi only, so the SystemVerilog ones ($isunknown,
+ * $countones, $onehot…) that native Icarus loads from v2009.vpi are missing. The run should go to the server.
+ */
+export function missingSystemTask(stdout: string): string | null {
+  return /System task\/function (\$\w+)\(\) is not defined by any module/.exec(stdout)?.[1] ?? null;
 }
 
 /** api/sandbox.py compile_hint: a plain next step for the two compile errors students hit most. */
@@ -143,6 +152,7 @@ export async function runIcarus(f: Factories, req: IcarusRequest): Promise<Simul
     return done(2);
   }
   stdout.push("[OK] Compilation successful → a.out");
+  if (req.compileOnly) return done(0);
 
   // 3. Simulate. Testbenches pick their own dump name: take whichever .vcd appears.
   stdout.push("\n--- Simulating (in your browser) ---");

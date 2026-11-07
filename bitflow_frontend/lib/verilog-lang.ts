@@ -19,7 +19,9 @@ export function blank(text: string): string {
 const lineAt = (text: string, index: number) => text.slice(0, index).split("\n").length;
 const MODULE = /\bmodule\s+(?:automatic\s+|static\s+)?([A-Za-z_]\w*)/;
 
-const DECL = /(?:^|[;(,]\s*|\n\s*)(input|output|inout|wire|reg|logic|integer|genvar|parameter|localparam|bit|byte|int|real|time)\b((?:\s+(?:wire|reg|logic|signed|unsigned|var))*)\s*(\[[^\]]*\]\s*)?((?:[A-Za-z_]\w*\s*(?:\[[^\]]*\]\s*)*(?:=[^,;)]*)?\s*,\s*)*[A-Za-z_]\w*)/g;
+// A name in the list is never a direction keyword: in `input a, b, output y` the list stops before `output`.
+const NAME = String.raw`(?!(?:input|output|inout)\b)[A-Za-z_]\w*`;
+const DECL = new RegExp(String.raw`(?:^|[;(,]\s*|\n\s*)(input|output|inout|wire|reg|logic|integer|genvar|parameter|localparam|bit|byte|int|real|time)\b((?:\s+(?:wire|reg|logic|signed|unsigned|var))*)\s*(\[[^\]]*\]\s*)?((?:${NAME}\s*(?:\[[^\]]*\]\s*)*(?:=[^,;)]*)?\s*,\s*)*${NAME})`, "g");
 
 /** Modules and declarations across the files. */
 export function indexVerilog(files: SourceFile[]): VerilogIndex {
@@ -191,6 +193,100 @@ export function formatVerilog(text: string, indent = "    "): string {
     else if (!/^`/.test(statement)) pending = 0;
   }
   return out.join("\n");
+}
+
+// ── References, rename and signature help (across files) ─────────────────────
+
+export interface Loc { file: string; line: number; column: number; length: number }
+
+const posAt = (text: string, index: number) => {
+  const before = text.slice(0, index);
+  const nl = before.lastIndexOf("\n");
+  return { line: before.split("\n").length, column: index - nl };
+};
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function moduleSpans(code: string): { name: string; from: number; to: number }[] {
+  return [...code.matchAll(new RegExp(MODULE, "g"))].map((m) => {
+    const end = code.indexOf("endmodule", m.index);
+    return { name: m[1], from: m.index!, to: end < 0 ? code.length : end + "endmodule".length };
+  });
+}
+
+/**
+ * Every use of `word` meaning the same thing as the one at file:line, sorted by file and position.
+ * A module name: everywhere in the project. A signal: inside its module, plus `.word(…)` port
+ * connections on instances of that module when it is a port. Comments and strings never match.
+ */
+export function referencesOf(files: SourceFile[], word: string, file: string, line: number): Loc[] {
+  if (!/^[A-Za-z_]\w*$/.test(word)) return [];
+  const index = indexVerilog(files);
+  const here = files.find((f) => f.name === file);
+  if (!here) return [];
+  const inModule = moduleAt(here.text, line);
+  const decl = index.decls.find((d) => d.name === word && d.module === inModule && d.file === file);
+  const isModule = !decl && index.modules.some((m) => m.name === word);
+  const out: Loc[] = [];
+  const add = (f: SourceFile, code: string, at: number) => out.push({ file: f.name, ...posAt(code, at), length: word.length });
+  const re = new RegExp(`\\b${escapeRe(word)}\\b`, "g");
+
+  for (const f of files) {
+    const code = blank(f.text);
+    if (isModule) { for (const m of code.matchAll(re)) add(f, code, m.index!); continue; }
+    if (f.name === file) {
+      const span = moduleSpans(code).find((s) => s.name === inModule) ?? { from: 0, to: code.length };
+      // `.word` names another module's port (or a hierarchical path), not this module's signal.
+      for (const m of code.matchAll(re)) {
+        if (m.index! >= span.from && m.index! < span.to && !/\.\s*$/.test(code.slice(Math.max(0, m.index! - 8), m.index!))) add(f, code, m.index!);
+      }
+    }
+    // A port is also named where its module is instantiated: `.word (expr)`.
+    if (decl && inModule && /input|output|inout/.test(decl.kind)) {
+      const inst = new RegExp(`\\b${escapeRe(inModule)}\\b\\s*(?:#\\s*\\((?:[^()]|\\([^()]*\\))*\\)\\s*)?[A-Za-z_]\\w*\\s*\\(`, "g");
+      for (const m of code.matchAll(inst)) {
+        if (f.name === file && moduleSpans(code).some((s) => s.name === inModule && m.index! >= s.from && m.index! < s.to)) continue;
+        const end = code.indexOf(";", m.index!);
+        const body = code.slice(m.index!, end < 0 ? code.length : end);
+        for (const p of body.matchAll(new RegExp(`\\.(${escapeRe(word)})\\s*\\(`, "g"))) add(f, code, m.index! + p.index! + 1);
+      }
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((l) => { const k = `${l.file}:${l.line}:${l.column}`; return !seen.has(k) && seen.add(k); })
+            .sort((a, b) => (a.file === b.file ? a.line - b.line || a.column - b.column : a.file < b.file ? -1 : 1));
+}
+
+/** Why `name` can't be a new identifier, or null when it can. */
+export function renameProblem(name: string): string | null {
+  if (!/^[A-Za-z_]\w*$/.test(name)) return "A name starts with a letter or _ and has only letters, digits and _.";
+  if (KEYWORDS.includes(name)) return `'${name}' is a keyword.`;
+  return null;
+}
+
+/**
+ * The instance whose port list the cursor is in (text = the file up to the cursor), and which port
+ * it is on: by name after `.name`, else by position (commas at the top level of the list).
+ */
+export function instanceAt(index: VerilogIndex, textBefore: string): { module: ModuleDef; active: number } | null {
+  const code = blank(textBefore);
+  const tail = code.slice(code.lastIndexOf(";") + 1);
+  const re = /\b([A-Za-z_]\w*)\s*(?:#\s*\((?:[^()]|\([^()]*\))*\)\s*)?([A-Za-z_]\w*)\s*\(/g;
+  let hit: { module: ModuleDef; at: number } | null = null;
+  for (const m of tail.matchAll(re)) {
+    const mod = index.modules.find((x) => x.name === m[1]);
+    if (mod?.info) hit = { module: mod, at: m.index! + m[0].length };
+  }
+  if (!hit) return null;
+  const list = tail.slice(hit.at);
+  let depth = 0, commas = 0;
+  for (const ch of list) {
+    if (ch === "(") depth++;
+    else if (ch === ")") { if (depth === 0) return null; depth--; }       // the list is closed: not inside it
+    else if (ch === "," && depth === 0) commas++;
+  }
+  const named = /\.([A-Za-z_]\w*)\s*(?:\([^()]*)?$/.exec(list.slice(list.lastIndexOf(",") + 1));
+  const byName = named ? hit.module.info!.ports.findIndex((p) => p.name === named[1]) : -1;
+  return { module: hit.module, active: byName >= 0 ? byName : Math.min(commas, hit.module.info!.ports.length - 1) };
 }
 
 // ── Diagnostics from Yosys ──────────────────────────────────────────────────

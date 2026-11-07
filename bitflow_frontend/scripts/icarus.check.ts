@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { cleanLines, compileHint, runIcarus, type Factories, type Factory } from "../lib/sim/icarus";
+import { cleanLines, compileHint, missingSystemTask, runIcarus, type Factories, type Factory } from "../lib/sim/icarus";
 
 const dir = path.join(__dirname, "..", "public", "iverilog");
 const load = async (n: string) => (await import(pathToFileURL(path.join(dir, `${n}.js`)).href)).default as Factory;
@@ -65,6 +65,11 @@ endmodule`;
   const fatal = await runIcarus(f, { design: "module d; endmodule", testbench: "module tb; initial $fatal(1, \"boom\"); endmodule" });
   assert.equal(fatal.status, "runtime_error", fatal.stdout);
   assert.match(fatal.stdout, /boom/);
+
+  // SystemVerilog system tasks aren't in this build: detected, so Run falls back to the server.
+  const sv2009 = await runIcarus(f, { design: "module d; endmodule", testbench: "module tb; reg [1:0] x; initial $display(\"%0d\", $isunknown(x)); endmodule" });
+  assert.equal(missingSystemTask(sv2009.stdout), "$isunknown", sv2009.stdout);
+  assert.equal(missingSystemTask(ok.stdout), null);
 
   assert.deepEqual(cleanLines(["/tb.v:3: error: x", "error: Failed to open 'system.vpi' because:", "     : dynamic linking not enabled", "plain"]),
                    ["tb.v:3: error: x", "plain"]);

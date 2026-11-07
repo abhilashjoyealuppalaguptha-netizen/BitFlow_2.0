@@ -28,7 +28,7 @@ import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 import type { Diagnostic } from "@/lib/diagnostics";
-import { VERILOG_LANGUAGES, registerVerilog } from "@/lib/verilog-monaco";
+import { VERILOG_LANGUAGES, registerVerilog, takePendingReveal } from "@/lib/verilog-monaco";
 import { lintInBrowser } from "@/lib/synth/client";
 import { mono } from "@/lib/fonts";
 import PixelLoader from "@/components/pixel/PixelLoader";
@@ -58,6 +58,8 @@ interface EditorProps {
   diagnostics?: Diagnostic[];
   /** Check the Verilog as you type (Yosys in the browser) and show its errors and warnings. Design files only. */
   lint?: boolean;
+  /** A project file's model (lib/verilog-monaco.ts uriOf): shared with cross-file definitions, references and rename. */
+  path?: string;
 }
 
 const LINT_DELAY_MS = 1200;
@@ -298,6 +300,7 @@ export default function Editor({
   readOnly = false,
   diagnostics,
   lint = false,
+  path,
 }: EditorProps) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -375,7 +378,21 @@ export default function Editor({
     // Activate our custom theme immediately after mount
     editor.updateOptions({ theme: "phosphor-dark" });
     applyMarkers();
-  }, [applyMarkers]);
+    // With two editors on a page (Sandbox: design + testbench) they share one keybinding service, and the rename
+    // box's Enter can land on the wrong editor and do nothing. Send these keys to the editor that has the focus.
+    const K = monaco.KeyCode, M = monaco.KeyMod;
+    const focused = () => monaco.editor.getEditors().find((e) => e.hasWidgetFocus()) ?? editor;
+    editor.addCommand(K.Enter, () => focused().trigger("keyboard", "acceptRenameInput", {}), "renameInputVisible");
+    editor.addCommand(M.Shift | K.Enter, () => focused().trigger("keyboard", "acceptRenameInputWithPreview", {}), "renameInputVisible");
+    editor.addCommand(K.Escape, () => focused().trigger("keyboard", "cancelRenameInput", {}), "renameInputVisible");
+    // Opened by a go-to-definition from another file: land on the definition.
+    const at = path ? takePendingReveal(path) : null;
+    if (at) {
+      editor.setPosition({ lineNumber: at.line, column: at.column });
+      editor.revealLineInCenter(at.line);
+      editor.focus();
+    }
+  }, [applyMarkers, path]);
 
   const canFormat = VERILOG_LANGUAGES.includes(language) && !readOnly;
   return (
@@ -388,6 +405,7 @@ export default function Editor({
         loading={<EditorSkeleton />}
         beforeMount={(monaco) => { defineTheme(monaco); registerVerilog(monaco); registerFormatter(monaco); }}
         onMount={handleMount}
+        {...(path ? { path, keepCurrentModel: true } : {})}
         onChange={(val) => onChange(val ?? "")}
         options={{
           ...EDITOR_OPTIONS,

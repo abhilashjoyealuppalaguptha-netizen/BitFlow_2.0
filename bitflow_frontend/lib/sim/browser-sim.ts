@@ -11,7 +11,7 @@
  */
 import { runSimulation } from "@/lib/api";
 import type { SimulateRequest, SimulateResponse } from "@/lib/types";
-import type { IcarusRequest } from "./icarus";
+import { missingSystemTask, type IcarusRequest } from "./icarus";
 
 export const RUN_LIMIT_MS  = 10_000;   // simulation time allowed once the engine is loaded
 export const LOAD_LIMIT_MS = 60_000;   // first download on a slow connection
@@ -51,6 +51,16 @@ export function runInBrowser(req: IcarusRequest): Promise<SimulateResponse> {
   });
 }
 
+/** The editor's live check: compile the whole project (design files + testbench) and return the compiler's output, or null if the engine can't start. */
+export async function compileInBrowser(design: string, testbench: string): Promise<string | null> {
+  if (typeof Worker === "undefined") return null;
+  try {
+    return (await runInBrowser({ design, testbench, compileOnly: true })).stdout;
+  } catch {
+    return null;
+  }
+}
+
 /** Can this run happen in the browser? Verilog design and testbench, Icarus semantics. */
 export const browserEligible = (p: SimulateRequest) =>
   (p.design_language ?? "verilog") === "verilog" && (p.testbench_language ?? "verilog") === "verilog" && p.simulator !== "verilator";
@@ -59,7 +69,12 @@ export const browserEligible = (p: SimulateRequest) =>
 export async function runPreferBrowser(payload: SimulateRequest, useBrowser: boolean): Promise<SimulateResponse> {
   if (!useBrowser || !browserEligible(payload) || typeof Worker === "undefined") return runSimulation(payload);
   try {
-    return await runInBrowser({ design: payload.design_v, testbench: payload.testbench_v, files: payload.files });
+    const res = await runInBrowser({ design: payload.design_v, testbench: payload.testbench_v, files: payload.files });
+    const missing = missingSystemTask(res.stdout);
+    if (!missing) return res;
+    const server = await runSimulation(payload);
+    return { ...server, stdout: `[note] ${missing} isn't in the in-browser simulator; this run used the server.
+${server.stdout}` };
   } catch (err) {
     if (!(err instanceof BrowserSimUnavailable)) throw err;
     const res = await runSimulation(payload);

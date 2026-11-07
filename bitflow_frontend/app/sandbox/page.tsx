@@ -80,7 +80,9 @@ import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import PixelLoader from "@/components/pixel/PixelLoader";
 import ProjectsMenu                   from "@/components/ProjectsMenu";
-import { setVerilogContext }          from "@/lib/verilog-monaco";
+import { setVerilogContext, uriOf }   from "@/lib/verilog-monaco";
+import { compileInBrowser }           from "@/lib/sim/browser-sim";
+import { generateTestbench, parseModule } from "@/lib/studio/tbgen";
 import { parseDiagnostics }           from "@/lib/diagnostics";
 import { TEMPLATES }                  from "@/lib/templates";
 import type { Coverage, DesignLanguage, Simulator, TestbenchLanguage } from "@/lib/types";
@@ -90,7 +92,7 @@ import { useSimulation }              from "@/hooks/useSimulation";
 import { useSplitter }                from "@/hooks/useSplitter";
 import { useLocalStorage }            from "@/hooks/useLocalStorage";
 import { exportProjectZip }           from "@/lib/export-zip";
-import { CODE_FILE, fileNameProblem }  from "@/lib/project-files";
+import { CODE_FILE, combineDesign, fileNameProblem, relabelOutput } from "@/lib/project-files";
 import { exportSnapshotPng }          from "@/lib/export-image";
 import { saveSubmission, loadSubmission, submissionAge } from "@/lib/submission-storage";
 
@@ -257,9 +259,11 @@ function HSplitter({
 function EditorTab({
   filename,
   sublabel,
+  action,
 }: {
   filename:  string;
   sublabel:  string;
+  action?:   JSX.Element | false;
 }) {
   return (
     <div
@@ -277,7 +281,8 @@ function EditorTab({
         </svg>
         <span className="font-mono text-[12px] text-pale">{filename}</span>
       </div>
-      <span className="font-mono text-[10px] text-dim tracking-wider">
+      <span className="flex items-center gap-3 font-mono text-[10px] text-dim tracking-wider">
+        {action}
         {sublabel}
       </span>
     </div>
@@ -379,11 +384,24 @@ function SandboxContent() {
     [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
   // The editor's completion and hover also know the files in other tabs (lib/verilog-monaco.ts).
+  // Every Verilog file by name, so definitions, references and rename work across them; a rename's edits to
+  // files not on screen come back through `edit`, and a definition in another tab switches to it.
   useEffect(() => {
-    setVerilogContext(designLanguage === "verilog"
-      ? [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content }))]
-      : []);
-  }, [designLanguage, designCode, extraFiles]);
+    setVerilogContext([
+      ...(designLanguage === "verilog"
+        ? [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content }))]
+        : []),
+      ...(testbenchLanguage === "verilog" ? [{ name: "tb.v", text: testbenchCode }] : []),
+    ], {
+      open: (name) => { if (name !== "tb.v") setActiveFile(name); },
+      edit: (name, text) => {
+        if (name === "design.v") setDesignCode(text);
+        else if (name === "tb.v") setTestbenchCode(text);
+        else setExtraFiles(extraFiles.map((f) => (f.name === name ? { ...f, content: text } : f)));
+      },
+    });
+  }, [designLanguage, testbenchLanguage, designCode, testbenchCode, extraFiles]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setVerilogContext([]), []);
   const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
 
   // ── Design files: design.v plus extra tabs (Verilog projects, lib/project-files.ts) ──
@@ -420,7 +438,30 @@ function SandboxContent() {
   const [asicOpen, setAsicOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
-  const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
+  // Live check: with the in-browser engine, the whole project (every design file + the testbench) is compiled a
+  // moment after typing stops; its errors replace the last run's until the next run.
+  const [liveOutput, setLiveOutput] = useState<string | null>(null);
+  const liveCheck = simulator === "browser" && designLanguage === "verilog" && testbenchLanguage === "verilog";
+  useEffect(() => { setLiveOutput(null); }, [result]);
+  useEffect(() => {
+    if (!liveCheck || isRunning) return;
+    let stale = false;
+    const t = setTimeout(async () => {
+      const project = combineDesign(designCode, extraFiles);
+      const out = await compileInBrowser(project.multi ? project.code : designCode, testbenchCode);
+      if (!stale && out !== null) setLiveOutput(project.multi ? relabelOutput(out, project.locate) ?? out : out);
+    }, 1200);
+    return () => { stale = true; clearTimeout(t); };
+  }, [liveCheck, isRunning, designCode, testbenchCode, extraFiles]);
+  const diagnostics = useMemo(() => parseDiagnostics(liveOutput ?? result?.stdout), [liveOutput, result]);
+
+  /** tb.v from the top module's ports (lib/studio/tbgen.ts): self-checking stimulus, clock and reset found by name. */
+  const generateTb = useCallback(() => {
+    const info = parseModule(designCode);
+    if (typeof info === "string") { window.alert(info); return; }
+    if (testbenchCode.trim() && !window.confirm(`Replace tb.v with a generated testbench for ${info.name}?`)) return;
+    setTestbenchCode(generateTestbench(info));   // Verilog style: its X checks need no $isunknown, so it runs in the browser too
+  }, [designCode, testbenchCode, setTestbenchCode]);
 
   /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
   const handleShare = useCallback(async () => {
@@ -855,7 +896,8 @@ function SandboxContent() {
                 language={openFile ? (CODE_FILE.test(openFile.name) ? "systemverilog" : "plaintext") : designMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.files[openFile?.name ?? "design.v"] ?? []}
-                lint={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
+                lint={!liveCheck && designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
+                path={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name)) ? uriOf(openFile?.name ?? "design.v") : undefined}
               />
             </div>
           </div>
@@ -873,7 +915,13 @@ function SandboxContent() {
            * min-w-0: same as left panel — prevents Monaco overflow.
            */}
           <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-            <EditorTab filename={tbFile} sublabel={testbenchLanguage === "python" ? "cocotb testbench" : "Testbench"} />
+            <EditorTab filename={tbFile} sublabel={testbenchLanguage === "python" ? "cocotb testbench" : "Testbench"}
+              action={testbenchLanguage === "verilog" && designLanguage === "verilog" && (
+                <button onClick={generateTb} disabled={isRunning} title="Write a self-checking testbench for the top module of design.v"
+                        className="px-2 py-0.5 rounded border border-rim text-ghost hover:text-phosphor hover:border-phosphor/50 disabled:opacity-40 normal-case tracking-normal">
+                  Generate testbench
+                </button>
+              )} />
             <div className="flex-1 min-h-0">
               <Editor
                 value={testbenchCode}
@@ -881,6 +929,7 @@ function SandboxContent() {
                 language={tbMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.tb}
+                path={testbenchLanguage === "verilog" ? uriOf("tb.v") : undefined}
               />
             </div>
           </div>
