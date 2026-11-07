@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { TEMPLATES } from "@/lib/templates";
 import { getAllProblems } from "@/lib/problems";
-import { definitionOf, formatVerilog, hoverFor, indexVerilog, instanceAt, instanceSnippet, moduleAt, parseYosysMessages, referencesOf, renameProblem } from "@/lib/verilog-lang";
+import { definitionOf, driverOf, formatVerilog, hoverFor, indexVerilog, instanceAt, instanceSnippet, moduleAt, parseYosysMessages, referencesOf, renameProblem } from "@/lib/verilog-lang";
 
 const alu = `module alu #(parameter W = 8) (
     input  wire [W-1:0] a, b,
@@ -154,6 +154,14 @@ console.log(`formatter: ok (${corpus.length} real files)`);
   assert.equal(instanceAt(index, "module t;\n  alu u (.a(x));\n  assign q = (")?.module ?? null, null, "closed list: not inside");
   assert.equal(instanceAt(index, "module t;\n  alu u (\n    .a (x),\n    ")?.module.name, "alu");
   assert.equal(instanceAt(index, "module t;\n  nope u (")?.module ?? null, null, "unknown module");
+  // Where a signal is driven (the waveform's "Where is this driven?").
+  const loc = (l: ReturnType<typeof driverOf>) => (l ? `${l.file}:${l.line}` : null);
+  assert.equal(loc(driverOf(files, "y", "tb.dut.u_alu")), "alu.v:6", "assign in the instance's module (u_alu is an alu)");
+  assert.equal(loc(driverOf(files, "y", "tb")), "tb.v:3", "tb's y comes from top's output port");
+  assert.equal(loc(driverOf(files, "b", "tb.dut")), "design.v:2", "a declaration's initialiser");
+  const counter = [{ name: "design.v", text: "module counter(input clk, rst, output reg [3:0] q);\n  always @(posedge clk)\n    if (rst) q <= 0;\n    else q <= q + 1;\nendmodule\n" }];
+  assert.equal(loc(driverOf(counter, "q", "tb.dut")), "design.v:3", "the first assignment in the block");
+  assert.equal(driverOf(counter, "nope", "tb"), null);
   console.log("references: ok");
 }
 console.log("verilog-lang: all checks passed");

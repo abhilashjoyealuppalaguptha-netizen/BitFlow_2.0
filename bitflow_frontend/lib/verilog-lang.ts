@@ -256,6 +256,60 @@ export function referencesOf(files: SourceFile[], word: string, file: string, li
             .sort((a, b) => (a.file === b.file ? a.line - b.line || a.column - b.column : a.file < b.file ? -1 : 1));
 }
 
+/**
+ * Where a signal gets its value, for "Where is this driven?" on the waveform: `assign name =`, `name <=` / `name =`
+ * in a block, or the instance output it is connected to. `scope` is the VCD scope ("tb.dut"): its last instance
+ * name picks the module to look in first (the module that instance is of), then the top of the scope, then anywhere.
+ */
+export function driverOf(files: SourceFile[], name: string, scope: string): Loc | null {
+  if (!/^[A-Za-z_]\w*$/.test(name)) return null;
+  const index = indexVerilog(files);
+  const instances = new Map<string, string>();       // instance name → module
+  for (const f of files) {
+    for (const m of blank(f.text).matchAll(/\b([A-Za-z_]\w*)\s*(?:#\s*\((?:[^()]|\([^()]*\))*\)\s*)?([A-Za-z_]\w*)\s*\(/g)) {
+      if (index.modules.some((x) => x.name === m[1])) instances.set(m[2], m[1]);
+    }
+  }
+  const parts = scope.split(".").filter(Boolean);
+  const wanted = [instances.get(parts[parts.length - 1] ?? ""), parts[parts.length - 1], parts[0]].filter((x): x is string => !!x);
+  const n = escapeRe(name);
+  const patterns = [
+    new RegExp(`\\bassign\\s+${n}\\b(?:\\s*\\[[^\\]]*\\])?\\s*=`, "g"),
+    new RegExp(`(?:^|[;\\s])${n}(?:\\s*\\[[^\\]]*\\])?\\s*<=`, "g"),
+    new RegExp(`(?:^|[;\\s])${n}(?:\\s*\\[[^\\]]*\\])?\\s*=(?!=)`, "g"),
+  ];
+  const found: (Loc & { module: string | null })[] = [];
+  for (const f of files) {
+    const code = blank(f.text);
+    const spans = moduleSpans(code);
+    for (const re of patterns) {
+      for (const m of code.matchAll(re)) {
+        const at = m.index! + m[0].search(new RegExp(`\\b${n}\\b`));
+        const module = spans.find((s) => at >= s.from && at < s.to)?.name ?? null;
+        if (/^\s*(input|output|inout|wire|reg|logic|parameter|localparam)\b/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;  // a declaration's initialiser counts below only if nothing else drives it
+        found.push({ file: f.name, ...posAt(code, at), length: name.length, module });
+      }
+    }
+  }
+  // Second choice: connected to an instance's port (`.q(name)`), or set where it's declared (`wire x = …`).
+  const connected: (Loc & { module: string | null })[] = [];
+  for (const f of files) {
+    const code = blank(f.text);
+    const spans = moduleSpans(code);
+    for (const m of code.matchAll(new RegExp(`\\.\\w+\\s*\\(\\s*${n}\\s*\\)|\\b${n}\\s*=(?!=)`, "g"))) {
+      const at = m.index! + m[0].search(new RegExp(`\\b${n}\\b`));
+      connected.push({ file: f.name, ...posAt(code, at), length: name.length, module: spans.find((s) => at >= s.from && at < s.to)?.name ?? null });
+    }
+  }
+  const strip = (l: Loc) => ({ file: l.file, line: l.line, column: l.column, length: l.length });
+  for (const w of wanted) {
+    const hit = found.find((l) => l.module === w) ?? connected.find((l) => l.module === w);
+    if (hit) return strip(hit);
+  }
+  const first = found[0] ?? connected[0];
+  return first ? strip(first) : null;
+}
+
 /** Why `name` can't be a new identifier, or null when it can. */
 export function renameProblem(name: string): string | null {
   if (!/^[A-Za-z_]\w*$/.test(name)) return "A name starts with a letter or _ and has only letters, digits and _.";

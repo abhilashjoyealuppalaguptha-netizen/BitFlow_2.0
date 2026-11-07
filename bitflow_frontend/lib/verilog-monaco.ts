@@ -44,6 +44,23 @@ export function setVerilogContext(files: SourceFile[], h: ProjectHandlers = {}) 
   if (monacoRef) syncModels(monacoRef);
 }
 
+/** Show file:line in the project's editors (switching tab if needed); false if the file isn't in the project. */
+export function revealInProject(name: string, line: number, column = 1): boolean {
+  const monaco = monacoRef;
+  if (!monaco || !context.some((f) => f.name === name)) return false;
+  const shown = monaco.editor.getEditors().find((e) => e.getModel()?.uri.toString() === monaco.Uri.parse(uriOf(name)).toString());
+  if (shown) {
+    shown.setPosition({ lineNumber: line, column });
+    shown.revealLineInCenter(line);
+    shown.focus();
+    return true;
+  }
+  if (!handlers.open) return false;
+  pendingReveal = { name, line, column };
+  handlers.open(name);
+  return true;
+}
+
 /** For an editor mounting with `path`: where a go-to-definition from another file asked to land. */
 export function takePendingReveal(path: string): { line: number; column: number } | null {
   if (!pendingReveal || uriOf(pendingReveal.name) !== path) return null;

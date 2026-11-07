@@ -80,7 +80,8 @@ import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import PixelLoader from "@/components/pixel/PixelLoader";
 import ProjectsMenu                   from "@/components/ProjectsMenu";
-import { setVerilogContext, uriOf }   from "@/lib/verilog-monaco";
+import { revealInProject, setVerilogContext, uriOf } from "@/lib/verilog-monaco";
+import { driverOf }                   from "@/lib/verilog-lang";
 import { compileInBrowser }           from "@/lib/sim/browser-sim";
 import { generateTestbench, parseModule } from "@/lib/studio/tbgen";
 import { parseDiagnostics }           from "@/lib/diagnostics";
@@ -990,7 +991,13 @@ function SandboxContent() {
                 className="flex-none overflow-hidden"
                 style={{ height: waveformH }}
               >
-                <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey="/sandbox" />
+                <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey="/sandbox"
+                  onReveal={designLanguage === "verilog" && testbenchLanguage === "verilog" ? (name, scope) => {
+                    const files = [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content })),
+                                   { name: "tb.v", text: testbenchCode }];
+                    const at = driverOf(files, name, scope);
+                    if (!at || !revealInProject(at.file, at.line, at.column)) window.alert(`Couldn't find where ${name} is driven in your files.`);
+                  } : undefined} />
               </div>
             </>
           )}
