@@ -67,6 +67,7 @@ jobs:
       - run: npm run check-wave-nav
       - run: npm run check-schematic
       - run: npm run check-share
+      - run: npm run check-engagement
       - run: npm run check-waveform-diff
       - run: npm run check-vhdl-starter
       - run: npm run check-bitstream

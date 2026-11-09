@@ -592,7 +592,51 @@ function DashboardFooter() {
 
 /* ── Types for fetched data ──────────────────────────────────────── */
 type ProfileStats = Pick<ProfileData, "totalXp" | "activity" | "totalActiveDays" | "maxStreak" | "totalSolved" | "totalProblems" | "recentAC" | "tracks" | "badges">;
-type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number };
+type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number; freezes: number };
+type QuestRow = { id: string; title: string; xp: number; target: number; progress: number; done: boolean; claimed: boolean };
+
+/** Today's three quests (/api/quests): progress bars, and a Claim button once one is finished. */
+function QuestsCard({ onXp }: { onXp: (xp: number) => void }) {
+  const [quests, setQuests] = useState<QuestRow[] | null | undefined>(undefined);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/quests").then((r) => (r.ok ? r.json() : null)).then((j) => setQuests(j?.quests ?? null)).catch(() => setQuests(null));
+  }, []);
+  const claim = async (id: string) => {
+    setBusy(id);
+    try {
+      const j = await fetch("/api/quests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((r) => r.json());
+      if (Array.isArray(j?.quests)) setQuests(j.quests);
+      if (j?.xp > 0) onXp(j.xp);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <GlassCard className="flex flex-col">
+      <div className={`${TITLE} mb-3`}>Daily quests</div>
+      {quests ? (
+        <ul className="space-y-3">
+          {quests.map((q) => (
+            <li key={q.id}>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={`text-xs min-w-0 ${q.claimed ? "text-dim" : "text-pale"}`}>{q.title}</span>
+                {q.claimed ? <span className="text-[11px] text-phosphor shrink-0">✓ +{q.xp} XP</span>
+                  : q.done ? <button onClick={() => claim(q.id)} disabled={busy === q.id}
+                                     className="shrink-0 px-2 py-0.5 rounded-md border border-phosphor/60 text-phosphor text-[11px] font-semibold hover:bg-phosphor/10 disabled:opacity-50">Claim +{q.xp} XP</button>
+                  : <span className="text-[11px] text-dim shrink-0">+{q.xp} XP</span>}
+              </div>
+              <Bar pct={(100 * q.progress) / q.target} label={`${q.title}: ${q.progress} of ${q.target}`} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-xs text-dim">{quests === undefined ? <PixelLoader size="sm" /> : "Quests couldn't load. Try refreshing."}</div>
+      )}
+      <div className="text-[11px] text-dim mt-auto pt-3">New quests every day at 00:00 UTC.</div>
+    </GlassCard>
+  );
+}
 
 const TITLE = "text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)]";
 
@@ -695,6 +739,7 @@ function DashboardContent() {
           bonusXp:      json.bonusXp,
           claimedToday: json.claimedToday,
           streak:       json.streak ?? 0,
+          freezes:      json.freezes ?? 0,
         } : null);
       })
       .catch(() => setDaily(null));
@@ -736,7 +781,7 @@ function DashboardContent() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat label="XP" value={stats ? <LevelValue xp={stats.totalXp} /> : dash} tone="text-phosphor" />
               <Stat label="Problems solved" value={stats ? stats.totalSolved : dash} sub={stats ? `of ${stats.totalProblems}` : undefined} />
-              <Stat label="Daily streak" value={daily ? <span className="inline-flex items-center gap-1.5">{daily.streak > 0 && <PixelIcon name="flame" size={24} label="on fire" />}{daily.streak}</span> : dash} sub="days in a row" tone="text-warn" />
+              <Stat label="Daily streak" value={daily ? <span className="inline-flex items-center gap-1.5">{daily.streak > 0 && <PixelIcon name="flame" size={24} label="on fire" />}{daily.streak}</span> : dash} sub={daily?.freezes ? `days in a row · ${daily.freezes} streak ${daily.freezes === 1 ? "freeze" : "freezes"}` : "days in a row"} tone="text-warn" />
               <Stat label="Active days" value={stats ? stats.totalActiveDays : dash} sub={stats ? `best streak ${stats.maxStreak}d` : undefined} />
             </div>
           </div>
@@ -774,6 +819,8 @@ function DashboardContent() {
                 <div className="text-xs text-dim">{daily === undefined ? <PixelLoader size="sm" /> : "No challenge today."}</div>
               )}
             </GlassCard>
+
+            <QuestsCard onXp={(xp) => setStats((s) => (s ? { ...s, totalXp: s.totalXp + xp } : s))} />
 
             <GlassCard>
               <div className={`${TITLE} mb-3`}>Continue where you left off</div>

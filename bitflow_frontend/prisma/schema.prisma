@@ -52,6 +52,7 @@ model User {
   comments         Comment[]
   announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
   lessonProgress   LessonProgress[]
+  xpEvents         XpEvent[]
   mockInterviews   MockInterview[]
 
   @@index([guardianTokenHash])
@@ -153,9 +154,26 @@ model UserXp {
   unlockedModules String   @default("[\"mod_logic_gates\", \"mod_arithmetic\"]")
   lastDailyBonus  String?  // UTC date (YYYY-MM-DD) the daily-challenge bonus was last awarded
   dailyStreak     Int      @default(0) // consecutive days the daily bonus was claimed, as of lastDailyBonus
+  streakFreezes   Int      @default(0) // missed days the streak can survive (lib/daily.ts: one per 7-day run, at most 2)
   updatedAt       DateTime @updatedAt
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One row per XP award, for the weekly leaderboard and daily quests (lib/xp.ts). `source` names
+/// what earned it (problem:<id>, lesson:<kind>:<slug>, daily:<day>, quest:<day>:<id>); unique per
+/// user, so the same reward is never logged twice. XP from before this table isn't in it.
+model XpEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Int
+  source    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source])
+  @@index([createdAt])
 }
 
 // ============================================================================
