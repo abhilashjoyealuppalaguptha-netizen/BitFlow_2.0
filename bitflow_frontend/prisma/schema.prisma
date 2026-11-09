@@ -307,11 +307,20 @@ model SharedDesign {
   testbenchCode String
   files         String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
   kind          String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
+  designLang    String   @default("verilog")  // "verilog" | "vhdl"
+  tbLang        String   @default("verilog")  // "verilog" | "vhdl" | "python" (cocotb)
+  public        Boolean  @default(false)      // listed in /explore; the link works either way
+  forkOf        String?                       // the share it was forked from (credit on its page)
+  forks         Int      @default(0)          // times it was forked into someone's projects
+  projectId     String?                       // the owner's project it was shared from: sharing it again updates this link
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt   // the owner can update the code; the link stays the same
 
   owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+  @@index([public, forks])
+  @@index([ownerId, projectId])
 }
 
 // ============================================================================
@@ -328,6 +337,7 @@ model Project {
   designLanguage    String   @default("verilog")
   testbenchLanguage String   @default("verilog")
   pins              String?  // JSON {"<board>:<top>": constraints text} (components/BitstreamTab.tsx)
+  forkOf            String?  // the shared design (/s/<id>) this project was forked from
   kind              String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

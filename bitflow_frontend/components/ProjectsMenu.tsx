@@ -25,7 +25,8 @@ export interface SavedContent extends Omit<EditorContent, "designLanguage" | "te
 interface Listed { id: string; name: string; updatedAt: string; versions: number }
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: Date } | { kind: "error"; message: string };
 
-const CURRENT_KEY = "bitflow_project";
+/** The project open in the Sandbox, {id, name}: autosaves go to it (components/ForkButton.tsx sets it after a fork). */
+export const CURRENT_KEY = "bitflow_project";
 const PINS_PREFIX = "bitflow_pins:";
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },

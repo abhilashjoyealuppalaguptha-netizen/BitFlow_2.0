@@ -79,7 +79,7 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import PixelLoader from "@/components/pixel/PixelLoader";
-import ProjectsMenu                   from "@/components/ProjectsMenu";
+import ProjectsMenu, { CURRENT_KEY }  from "@/components/ProjectsMenu";
 import { cursorLine, revealInProject, setVerilogContext, uriOf } from "@/lib/verilog-monaco";
 import { driverOf }                   from "@/lib/verilog-lang";
 import { compileInBrowser }           from "@/lib/sim/browser-sim";
@@ -474,22 +474,24 @@ function SandboxContent() {
     setTestbenchCode(generateTestbench(info));   // Verilog style: its X checks need no $isunknown, so it runs in the browser too
   }, [designCode, testbenchCode, setTestbenchCode]);
 
-  /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
+  /**
+   * Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked).
+   * With a saved project open, sharing it again updates that project's link instead of making a new one.
+   */
   const handleShare = useCallback(async () => {
-    if (designLanguage !== "verilog" || testbenchLanguage !== "verilog") {
-      window.alert("Share links support Verilog / SystemVerilog projects for now. Switch both editors to Verilog to share.");
-      return;
-    }
+    let projectId: string | undefined;
+    try { projectId = JSON.parse(localStorage.getItem(CURRENT_KEY) ?? "null")?.id; } catch { /* no project open */ }
     try {
       const res = await fetch("/api/share", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, testbenchCode, files: extraFiles }),
+        body: JSON.stringify({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage, projectId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Sharing failed (${res.status}).`);
       const url = `${window.location.origin}${data.url}`;
       const copied = await navigator.clipboard?.writeText(url).then(() => true, () => false);
-      window.prompt(copied ? "Link copied. Anyone with it can view and fork this design:" : "Copy this link. Anyone with it can view and fork this design:", url);
+      const what = data.updated ? "Updated this project's link, which stays the same." : "Anyone with this link can view and fork this design.";
+      window.prompt(`${what} ${copied ? "Link copied:" : "Copy it:"}`, url);
     } catch (err) {
       window.alert((err as Error).message || "Sharing failed.");
     }
