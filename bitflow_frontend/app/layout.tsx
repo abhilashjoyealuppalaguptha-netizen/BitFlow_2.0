@@ -39,6 +39,9 @@ export const metadata: Metadata = {
   title:        { default: `${SITE_NAME} — ${SITE_TAGLINE}`, template: `%s · ${SITE_NAME}` },
   description:  SITE_DESCRIPTION,
   applicationName: SITE_NAME,
+  // Every page names itself (its path, no query string) as canonical unless it sets its own, so
+  // ?tab=, ?next= and similar variants don't show up in Search Console as duplicates.
+  alternates:   { canonical: "./" },
   openGraph: {
     type:        "website",
     siteName:    SITE_NAME,
