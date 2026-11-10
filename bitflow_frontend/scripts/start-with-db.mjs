@@ -8,6 +8,20 @@ const __dirname = dirname(__filename);
 
 const databaseUrl = process.env.DATABASE_URL || "file:/app/data/dev.db";
 
+// --setup-only: prepare the database and exit (Vercel's build step, see
+// vercel.json); a failed schema push then fails the deploy.
+const setupOnly = process.argv.includes("--setup-only");
+if (setupOnly && process.env.VERCEL && !/^postgres(ql)?:/.test(databaseUrl)) {
+  console.error("[DB Setup] No Postgres DATABASE_URL. In Vercel: Storage → Neon → connect it to this project, then redeploy.");
+  process.exit(1);
+}
+
+// Postgres needs a directUrl for schema pushes. Vercel's Neon integration
+// provides DATABASE_URL_UNPOOLED; otherwise default to the (pooled) URL.
+if (/^postgres(ql)?:\/\//.test(databaseUrl) && !process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = process.env.DATABASE_URL_UNPOOLED || databaseUrl;
+}
+
 // 1. Ensure local SQLite file directory exists
 if (databaseUrl.startsWith("file:")) {
   try {
@@ -88,13 +102,27 @@ try {
   console.error("[DB Setup] Failed to dynamically adjust prisma schema:", err);
 }
 
-// 3. Push schema to database
-console.log("[DB Setup] Pushing schema to database...");
-runPrisma(["db", "push", "--accept-data-loss"], true);
+// 3. Push schema to database. No --accept-data-loss: a change that would drop
+//    columns/tables fails loudly here instead of silently deleting user data.
+//    ponytail: db push has no migration history; switch to `prisma migrate
+//    deploy` once schema changes need to be reviewed and replayed.
+// Previews of the release branch get promoted to production (`vercel promote` reuses the
+// build), so they must push the schema. Previews of any other branch must not touch the
+// database: it may be production's. BITFLOW_DB_BRANCH names the release branch.
+const releaseBranch = process.env.BITFLOW_DB_BRANCH || "bitflow-hardening-and-features";
+const skipDb = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_GIT_COMMIT_REF !== releaseBranch;
+if (skipDb) {
+  console.log(`[DB Setup] Preview of ${process.env.VERCEL_GIT_COMMIT_REF}: skipping db push and seed.`);
+} else {
+  console.log("[DB Setup] Pushing schema to database...");
+  runPrisma(["db", "push", "--skip-generate"], !setupOnly);
 
-// 4. Seed database (non-fatal)
-console.log("[DB Setup] Seeding database...");
-runPrisma(["db", "seed"], true);
+  // 4. Seed database (non-fatal)
+  console.log("[DB Setup] Seeding database...");
+  runPrisma(["db", "seed"], true);
+}
+
+if (setupOnly) process.exit(0);
 
 // 5. Start Next.js server bound to 0.0.0.0
 console.log("[DB Setup] Starting application...");

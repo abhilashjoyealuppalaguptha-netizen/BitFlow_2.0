@@ -51,6 +51,19 @@ export interface ArenaProblem {
   testbenchSkeleton:  string;
   hiddenTestcases:  ArenaTestcase[];
 
+  /** "testbench": starterCode is a correct DUT and the student writes tb.v that catches its bugs.
+   *  "formal": the same, but the student writes a property harness that a solver checks. */
+  problemType?: "design" | "testbench" | "formal";
+  /** Formal problems: clock cycles the solver searches when checking and grading (default 20). */
+  formalDepth?: number;
+  /** Timing problems (lib/arena/timing.ts): Fmax the design must reach on an iCE40-HX8K,
+   *  measured inside `wrapper`, a top module that registers every input and output. */
+  timing?: { targetMhz: number; wrapper: string };
+  /** Verification problems (lib/arena/verification.ts): run every grading simulation on Verilator
+   *  (SystemVerilog classes, randomize(), concurrent assertions), and require the student's testbench
+   *  to reach this coverage of the correct design (percent, lib/grading.ts coverageShortfall). */
+  verification?: { simulator: "verilator"; minCoverage?: { line?: number; branch?: number; toggle?: number } };
+
   // Rewards
   xpReward:     number;
   /** Estimated solve time in minutes — shown in the problem card */
@@ -74,7 +87,10 @@ export type ArenaCategory =
   | "Arithmetic"
   | "Memory"
   | "Protocol"
-  | "Pipeline";
+  | "Pipeline"
+  | "Verification"
+  | "Formal"
+  | "Debug";        // find the bug (lib/debug-problems.ts)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submission result — parallel shape to Learning Path SubmissionResult
@@ -101,5 +117,15 @@ export interface ArenaSubmissionResult {
   totalDurationMs: number;
   submittedCode:   string;
   xpEarned:        number;
+  /** Your total XP after it (signed in only): shows when a level was crossed */
+  totalXp?:        number | null;
   errorMessage?:   string;
+  /** Your design's own signals on the first failing hidden test (wrong answers only). */
+  failingWaveform?: import("@/lib/grading").FailingWaveform | null;
+  /** Shortest input sequence where the design and the reference solution differ. */
+  counterexample?: import("@/lib/grading").Counterexample | null;
+  /** Optimization scores of an accepted design. */
+  metrics?: { gates: number; depth: number; ffBits: number } | null;
+  /** Timing problems: Fmax after place and route, and the target it had to reach. */
+  timing?: { fmaxMhz: number | null; targetMhz: number } | null;
 }

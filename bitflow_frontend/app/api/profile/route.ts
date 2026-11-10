@@ -1,119 +1,73 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { destroySession, getSessionUser, verifyPassword } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
+import { profileStats } from "@/lib/profile";
+import { reportError } from "@/lib/error-log";
+import { isMinor } from "@/lib/privacy";
+import { audit, deleteAccount } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
-function toDateKey(d: Date) {
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-// GET /api/profile — aggregated stats for the logged-in user's profile page
+// GET /api/profile — aggregated stats for the logged-in user's profile page (lib/profile.ts)
 export async function GET() {
   try {
-    const userId = cookies().get("bitflow_session")?.value;
-
-    if (!userId) {
-      return NextResponse.json({ user: null });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, username: true, role: true, createdAt: true },
-    });
-
-    if (!user) {
-      return NextResponse.json({ user: null });
-    }
-
-    const oneYearAgo = new Date();
-    oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-
-    const [xpRecord, solvedProgress, questionCounts, activitySubs, recentAcceptedRaw, totalSubmissions] =
-      await Promise.all([
-        prisma.userXp.findUnique({ where: { userId } }),
-        prisma.userProgress.findMany({
-          where: { userId, solved: true },
-          select: { question: { select: { difficulty: true } } },
-        }),
-        prisma.question.groupBy({ by: ["difficulty"], _count: { _all: true } }),
-        prisma.submission.findMany({
-          where: { userId, createdAt: { gte: oneYearAgo } },
-          select: { createdAt: true },
-        }),
-        prisma.submission.findMany({
-          where: { userId, accepted: true },
-          orderBy: { createdAt: "desc" },
-          take: 30,
-          select: {
-            createdAt: true,
-            problemId: true,
-            question: { select: { title: true, slug: true, difficulty: true } },
-          },
-        }),
-        prisma.submission.count({ where: { userId } }),
-      ]);
-
-    // Solved / total counts per difficulty
-    const solvedByDifficulty: Record<string, number> = {};
-    for (const p of solvedProgress) {
-      const diff = p.question.difficulty;
-      solvedByDifficulty[diff] = (solvedByDifficulty[diff] || 0) + 1;
-    }
-    const totalByDifficulty: Record<string, number> = {};
-    let totalProblems = 0;
-    for (const q of questionCounts) {
-      totalByDifficulty[q.difficulty] = q._count._all;
-      totalProblems += q._count._all;
-    }
-
-    // Activity heatmap (past year) + streaks
-    const activity: Record<string, number> = {};
-    for (const s of activitySubs) {
-      const key = toDateKey(s.createdAt);
-      activity[key] = (activity[key] || 0) + 1;
-    }
-    const activeDays = Object.keys(activity).sort();
-    let maxStreak = 0;
-    let currentRun = 0;
-    let prevTime: number | null = null;
-    for (const key of activeDays) {
-      const t = new Date(key + "T00:00:00Z").getTime();
-      currentRun = prevTime !== null && t - prevTime === 86400000 ? currentRun + 1 : 1;
-      maxStreak = Math.max(maxStreak, currentRun);
-      prevTime = t;
-    }
-
-    // Recent accepted submissions, deduped to one entry per problem
-    const seen = new Set<string>();
-    const recentAC: Array<{ title: string; slug: string; difficulty: string; submittedAt: string }> = [];
-    for (const s of recentAcceptedRaw) {
-      if (seen.has(s.problemId)) continue;
-      seen.add(s.problemId);
-      recentAC.push({
-        title: s.question.title,
-        slug: s.question.slug,
-        difficulty: s.question.difficulty,
-        submittedAt: s.createdAt.toISOString(),
-      });
-      if (recentAC.length >= 10) break;
-    }
-
-    return NextResponse.json({
-      user,
-      totalXp: xpRecord?.totalXp || 0,
-      totalSolved: solvedProgress.length,
-      totalProblems,
-      solvedByDifficulty,
-      totalByDifficulty,
-      totalSubmissions,
-      totalActiveDays: activeDays.length,
-      maxStreak,
-      activity,
-      recentAC,
-    });
+    const userId = (await getSessionUser())?.id;
+    const data = userId ? await profileStats(userId) : null;
+    return NextResponse.json(data ?? { user: null });
   } catch (err) {
-    console.error("Profile fetch error:", err);
+    await reportError("Profile fetch error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
+}
+
+// PATCH /api/profile { publicProfile?: boolean, nomineeName?, nomineeContact? } — opt in or out of
+// the public page /u/<username> (never for under-18s), or name the person who may exercise your
+// data rights if you can't (DPDP s.14; empty strings remove the nominee).
+export async function PATCH(request: Request) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  const body = await request.json().catch(() => ({}));
+  if ("nomineeName" in (body ?? {}) || "nomineeContact" in (body ?? {})) {
+    const clean = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 120) : "");
+    const nomineeName = clean(body.nomineeName), nomineeContact = clean(body.nomineeContact);
+    if (!!nomineeName !== !!nomineeContact) return NextResponse.json({ error: "Give both the nominee's name and how to contact them." }, { status: 400 });
+    await prisma.user.update({ where: { id: user.id }, data: { nomineeName: nomineeName || null, nomineeContact: nomineeContact || null } });
+    await audit(user.id, nomineeName ? "consent.nominee.set" : "consent.nominee.removed", user.id);
+    return NextResponse.json({ nomineeName: nomineeName || null, nomineeContact: nomineeContact || null });
+  }
+  if (typeof body?.publicProfile !== "boolean") {
+    return NextResponse.json({ error: "publicProfile must be true or false." }, { status: 400 });
+  }
+  if (body.publicProfile && isMinor(user)) {
+    return NextResponse.json({ error: "Public profiles aren't available for students under 18." }, { status: 403 });
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { publicProfile: body.publicProfile } });
+  return NextResponse.json({ publicProfile: body.publicProfile });
+}
+
+// DELETE /api/profile { password, confirm: "delete" } — delete your account and everything in it
+// (progress, submissions, projects, share links, certificates, comments, the classes you teach).
+// Admin accounts can't delete themselves here, so the site can't lose its admin by accident.
+export async function DELETE(request: Request) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  const { success } = await rateLimit(request, { limit: 5, windowMs: 10 * 60_000, prefix: "delete-account", key: `user:${user.id}` });
+  if (!success) return NextResponse.json({ error: "Too many attempts. Please wait a few minutes." }, { status: 429 });
+  if (user.role === "ADMIN") return NextResponse.json({ error: "Admin accounts can't be deleted from the profile page." }, { status: 403 });
+
+  const { password, confirm } = await request.json().catch(() => ({}));
+  if (confirm !== "delete") return NextResponse.json({ error: 'Type "delete" to confirm.' }, { status: 400 });
+  const row = await prisma.user.findUnique({ where: { id: user.id }, select: { password: true } });
+  if (!row || typeof password !== "string" || !verifyPassword(password, row.password).ok) {
+    return NextResponse.json({ error: "That password is wrong." }, { status: 400 });
+  }
+  try {
+    await deleteAccount(user.id, user.id, "deleted by the user (erasure / consent withdrawn)");
+  } catch (err) {
+    await reportError("Account deletion failed:", err);
+    return NextResponse.json({ error: "The account couldn't be deleted. Please try again." }, { status: 500 });
+  }
+  await destroySession();
+  return NextResponse.json({ ok: true });
 }

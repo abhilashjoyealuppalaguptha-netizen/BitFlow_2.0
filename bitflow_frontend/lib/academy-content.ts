@@ -1,48 +1,46 @@
 /**
- * lib/academy-content.ts — Digital Electronics Academy topic registry
+ * lib/academy-content.ts — Digital Electronics Academy chapters and lookup helpers.
  *
- * Loads static JSON content and exposes lookup helpers.
- * 80% data / 20% code: add topics by dropping JSON in content/.
+ * Every chapter's text and circuits load with this module, so it is for the server: the chapter
+ * page, lessons and certificates. Client pages that list chapters use lib/academy-meta.ts
+ * (scripts/academy.check.ts enforces this and keeps the two in step).
  */
 
-import type { AcademyTopic, AcademyTopicMeta } from "./academy-types";
+import type { AcademyTopic } from "./academy-types";
 
-import booleanAlgebra   from "@/content/boolean-algebra/index.json";
-import numberSystems    from "@/content/number-systems/index.json";
-import gates            from "@/content/gates/index.json";
-import combinational    from "@/content/combinational/index.json";
-import sequential       from "@/content/sequential/index.json";
-import timing           from "@/content/timing/index.json";
-import fsms             from "@/content/fsms/index.json";
-import memory           from "@/content/memory/index.json";
+import whatIsDigital    from "@/content/what-is-digital/chapter";
+import numberSystems    from "@/content/number-systems/chapter";
+import binaryArithmetic from "@/content/binary-arithmetic/chapter";
+import codes            from "@/content/codes/chapter";
+import gates            from "@/content/gates/chapter";
+import booleanAlgebra   from "@/content/boolean-algebra/chapter";
+import karnaughMaps     from "@/content/karnaugh-maps/chapter";
+import quineMcCluskey   from "@/content/quine-mccluskey/chapter";
+import logicFamilies    from "@/content/logic-families/chapter";
+import addersComparators from "@/content/adders-comparators/chapter";
+import combinational    from "@/content/combinational/chapter";
+import arithmeticCircuits from "@/content/arithmetic-circuits/chapter";
+import sequential       from "@/content/sequential/chapter";
+import registers        from "@/content/registers/chapter";
+import counters         from "@/content/counters/chapter";
+import fsms             from "@/content/fsms/chapter";
+import timing           from "@/content/timing/chapter";
+import memory           from "@/content/memory/chapter";
+import adcDac           from "@/content/adc-dac/chapter";
+import gatesToVerilog   from "@/content/gates-to-verilog/chapter";
+
 
 const RAW_TOPICS: AcademyTopic[] = [
-  booleanAlgebra,
-  numberSystems,
-  gates,
-  combinational,
-  sequential,
-  timing,
-  fsms,
-  memory,
-] as AcademyTopic[];
+  whatIsDigital, numberSystems, binaryArithmetic, codes,
+  gates, booleanAlgebra, karnaughMaps, quineMcCluskey,
+  logicFamilies, addersComparators, combinational, arithmeticCircuits,
+  sequential, registers, counters, fsms,
+  timing, memory, adcDac, gatesToVerilog,
+];
 
 /** All topics sorted by curriculum order */
 export const ACADEMY_TOPICS: AcademyTopic[] = [...RAW_TOPICS].sort(
   (a, b) => a.order - b.order
-);
-
-/** Lightweight metadata for hub cards */
-export const ACADEMY_TOPIC_META: AcademyTopicMeta[] = ACADEMY_TOPICS.map(
-  ({ slug, title, summary, icon, difficulty, order, estimatedMinutes }) => ({
-    slug,
-    title,
-    summary,
-    icon,
-    difficulty,
-    order,
-    estimatedMinutes,
-  })
 );
 
 export function getTopicBySlug(slug: string): AcademyTopic | undefined {
@@ -64,15 +62,3 @@ export function getPrevTopic(slug: string): AcademyTopic | undefined {
   if (idx <= 0) return undefined;
   return ACADEMY_TOPICS[idx - 1];
 }
-
-export const DIFFICULTY_LABELS: Record<string, string> = {
-  foundations: "Foundations",
-  core:        "Core",
-  advanced:    "Advanced",
-};
-
-export const DIFFICULTY_STYLES: Record<string, string> = {
-  foundations: "border-phosphor/30 bg-phosphor/10 text-phosphor",
-  core:        "border-info/30 bg-info/10 text-info",
-  advanced:    "border-warn/30 bg-warn/10 text-warn",
-};

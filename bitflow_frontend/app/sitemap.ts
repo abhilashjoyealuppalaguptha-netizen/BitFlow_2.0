@@ -1,0 +1,22 @@
+/**
+ * app/sitemap.ts — /sitemap.xml: the public pages search engines should index.
+ * Pages behind sign-in are left out (they are noindex: lib/site.ts GATED).
+ */
+
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
+import { STUDIO_TOOLS } from "@/lib/studio/tools";
+import { LESSONS } from "@/lib/lab/lessons";
+import { CHALLENGES } from "@/lib/studio/circuit-challenges";
+
+const PAGES: [path: string, priority: number][] = [
+  ["/", 1], ["/announcements", 0.7], ["/about", 0.8], ["/studio", 0.8], ["/lab", 0.9], ["/lab/credits", 0.3],
+  ...LESSONS.map((l): [string, number] => [`/lab/${l.slug}`, 0.7]), ["/leaderboard", 0.6], ["/problems", 0.8], ["/login", 0.5], ["/privacy", 0.3], ["/terms", 0.3], ["/contact", 0.4], ["/flash", 0.7], ["/explore", 0.6],
+  ...STUDIO_TOOLS.map((t): [string, number] => [t.href, 0.7]),
+  ...CHALLENGES.map((c): [string, number] => [`/studio/challenges/${c.id}`, 0.5]),
+];
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  const lastModified = new Date();   // pages change when the site is deployed
+  return PAGES.map(([path, priority]) => ({ url: `${SITE_URL}${path}`, lastModified, changeFrequency: "weekly", priority }));
+}

@@ -15,14 +15,18 @@ Keeping I/O helpers here makes sandbox.py easier to unit-test in isolation.
 from __future__ import annotations
 
 import base64
+import itertools
 import logging
 import logging.config
 import os
 import secrets
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -84,14 +88,34 @@ def create_workspace() -> tuple[str, str]:
     """
     workspace_id = secrets.token_hex(6)          # 12-char hex, e.g. "3f9a2b1c4d8e"
     tmpdir = tempfile.mkdtemp(prefix=f"verilog_{workspace_id}_")
+    if os.name == "posix" and os.geteuid() == 0:
+        # Its own uid per run (sandbox._run_limited runs as the directory's owner), group root
+        # so the API can still write and clean up: another run's code can't open this
+        # directory, nor /proc/<pid>/cwd of this run's processes (e.g. a hidden testbench).
+        with _uid_lock:
+            uid = RUN_UID_BASE + next(_uid_counter) % RUN_UID_COUNT
+        try:
+            os.chown(tmpdir, uid, 0)
+            os.chmod(tmpdir, 0o770)
+            return tmpdir, workspace_id
+        except PermissionError:
+            logger.warning("No CAP_CHOWN: runs share the sandbox uid")
     os.chmod(tmpdir, 0o777)
     return tmpdir, workspace_id
+
+
+# ponytail: one uvicorn process, so a counter keeps concurrent runs on distinct uids;
+# several worker processes would need a shared allocator.
+RUN_UID_BASE, RUN_UID_COUNT = 20000, 10000
+_uid_counter = itertools.count(secrets.randbelow(RUN_UID_COUNT))
+_uid_lock = threading.Lock()
 
 
 def write_source_files(
     tmpdir: str,
     design_v: str,
     testbench_v: str,
+    files: dict | None = None,
 ) -> None:
     """
     Write design.v and tb.v into the workspace directory.
@@ -113,6 +137,12 @@ def write_source_files(
     tb_path.write_text(testbench_v, encoding="utf-8")
     os.chmod(design_path, 0o644)
     os.chmod(tb_path, 0o644)
+
+    # Extra input files (names already validated in SimulateJsonRequest).
+    for name, content in (files or {}).items():
+        path = Path(tmpdir, name)
+        path.write_text(content, encoding="utf-8")
+        os.chmod(path, 0o644)
 
 
 def cleanup_workspace(tmpdir: str) -> None:

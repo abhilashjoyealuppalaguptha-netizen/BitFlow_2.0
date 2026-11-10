@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
+import { reportError } from "@/lib/error-log";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -29,18 +31,14 @@ function downloadResponse(body: string, filename: string, contentType: string) {
 
 export async function GET(request: Request) {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-    if (user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
+    const denied = await adminDenied();
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const dataset = searchParams.get("dataset") ?? "submissions";
     const format = searchParams.get("format") ?? (dataset === "all" ? "json" : "jsonl");
     const includeWaveforms = searchParams.get("includeWaveforms") === "true";
+    await auditAdmin("admin.data.export", null, `${dataset} (${format})`);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
     if (dataset === "submissions") {
@@ -197,7 +195,7 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   } catch (err) {
-    console.error("[GET /api/admin/export] error:", err);
+    await reportError("[GET /api/admin/export] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

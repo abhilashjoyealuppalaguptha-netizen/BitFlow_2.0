@@ -13,25 +13,77 @@
 
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/hooks/useAuth";
+import PageViewTracker from "@/components/PageViewTracker";
+import SimulatorWakeNotice from "@/components/SimulatorWakeNotice";
+import CommandPalette from "@/components/CommandPalette";
+import Analytics from "@/components/Analytics";
+import ConsentGate from "@/components/ConsentGate";
+import SiteNotice from "@/components/SiteNotice";
+import { NavDrawer } from "@/components/SiteHeader";
+import MockBanner from "@/components/MockBanner";
+import { inter, mono, pixel } from "@/lib/fonts";
+import CelebrationProvider from "@/components/pixel/CelebrationProvider";
+import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
+import LessonSync from "@/components/LessonSync";
+import SiteChrome from "@/components/SiteChrome";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata — affects <head> on every page
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Favicon and Apple touch icon come from app/icon.png and app/apple-icon.png,
+// the social preview from app/opengraph-image.tsx (Next.js file conventions).
 export const metadata: Metadata = {
-  title:       "BitFlow",
-  description: "BitFlow — browser-based Icarus Verilog compiler and simulator.",
-  icons: {
-    icon: "/bitflow_logo_2.png",
+  metadataBase: new URL(SITE_URL),
+  title:        { default: `${SITE_NAME} — ${SITE_TAGLINE}`, template: `%s · ${SITE_NAME}` },
+  description:  SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  // Every page names itself (its path, no query string) as canonical unless it sets its own, so
+  // ?tab=, ?next= and similar variants don't show up in Search Console as duplicates.
+  alternates:   { canonical: "./" },
+  openGraph: {
+    type:        "website",
+    siteName:    SITE_NAME,
+    title:       `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+    url:         "/",
   },
+  twitter: {
+    card:        "summary_large_image",
+    title:       `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
+  // Google Search Console ownership check: set GOOGLE_SITE_VERIFICATION to the token from Search Console
+  ...(process.env.GOOGLE_SITE_VERIFICATION ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } } : {}),
+};
+
+/** Organization and WebSite structured data (schema.org), on every page. */
+const SITE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/bitflow_logo_2.png`,
+      description: SITE_DESCRIPTION,
+      parentOrganization: { "@type": "Organization", name: OPERATOR },
+      sameAs: [
+        "https://www.linkedin.com/company/bitflow-vlsi-community/",
+        "https://www.instagram.com/bitflow__official",
+      ],
+    },
+    { "@type": "WebSite", "@id": `${SITE_URL}/#website`, url: SITE_URL, name: SITE_NAME, description: SITE_TAGLINE, publisher: { "@id": `${SITE_URL}/#organization` } },
+  ],
 };
 
 export const viewport: Viewport = {
   width:        "device-width",
   initialScale: 1,
-  // Prevent browser zoom on mobile input focus
-  maximumScale: 1,
+  // No maximumScale: people must be able to pinch-zoom. iOS input-focus zoom is
+  // avoided instead by 16px form text on small screens (globals.css).
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,10 +96,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={`h-full ${inter.variable} ${mono.variable} ${pixel.variable}`}>
       <body className="h-full overflow-y-auto bg-void text-bright font-mono antialiased">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_SCHEMA) }} />
         <AuthProvider>
-          {children}
+          <CelebrationProvider>{children}</CelebrationProvider>
+          <SiteChrome>
+            <PageViewTracker />
+            <SimulatorWakeNotice />
+            <CommandPalette />
+            <Analytics />
+            <SiteNotice />
+            <NavDrawer />
+            <MockBanner />
+            <LessonSync />
+            <ConsentGate />
+          </SiteChrome>
         </AuthProvider>
       </body>
     </html>

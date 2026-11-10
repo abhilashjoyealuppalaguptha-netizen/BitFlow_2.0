@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import fs from "fs";
-import path from "path";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth-utils";
+import { createSession, hashPassword, passwordProblem, usernameProblem } from "@/lib/auth-utils";
+import { botProblem, newFormToken } from "@/lib/bot-check";
 import { rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/error-log";
+import { CONSENT_VERSION, birthProblem, isMinor } from "@/lib/privacy";
+import { audit } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
+/** The sign-up form fetches a fresh form token when it opens (lib/bot-check.ts). */
+export function GET() {
+  return NextResponse.json({ formToken: newFormToken() });
+}
+
 export async function POST(request: Request) {
-  // Rate limit: max 5 registrations per minute per IP
-  const { success } = rateLimit(request, { limit: 5, windowMs: 60_000, prefix: "register" });
+  // 5/min per client IP; unidentified clients share a roomier bucket (class sign-ups).
+  const { success } = await rateLimit(request, { limit: 5, anonymousLimit: 30, windowMs: 60_000, prefix: "register" });
   if (!success) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please wait a moment and try again." },
@@ -19,7 +26,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { username, password, role, secretPassword } = await request.json();
+    const body = (await request.json()) ?? {};
+    const { username, password, role, secretPassword } = body;
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
 
     if (!normalizedUsername || !password || !role) {
@@ -36,6 +44,36 @@ export async function POST(request: Request) {
       );
     }
 
+    const bot = botProblem(body);
+    if (bot) {
+      return NextResponse.json({ error: bot }, { status: 400 });
+    }
+
+    const badName = usernameProblem(normalizedUsername);
+    if (badName) {
+      return NextResponse.json({ error: badName }, { status: 400 });
+    }
+
+    const weak = passwordProblem(password);
+    if (weak) {
+      return NextResponse.json({ error: weak }, { status: 400 });
+    }
+
+    // DPDP: the notice is accepted before anything is stored, and the age decides
+    // whether a parent must consent (lib/privacy.ts).
+    if (body.consent !== true) {
+      return NextResponse.json({ error: "Please read and accept the privacy notice to create an account." }, { status: 400 });
+    }
+    const birthYear = Number(body.birthYear), birthMonth = Number(body.birthMonth);
+    const badBirth = birthProblem(birthYear, birthMonth);
+    if (badBirth) {
+      return NextResponse.json({ error: badBirth }, { status: 400 });
+    }
+    const minor = isMinor({ birthYear, birthMonth });
+    if (minor && role === "ADMIN") {
+      return NextResponse.json({ error: "Admin accounts need an adult." }, { status: 400 });
+    }
+
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { username: normalizedUsername },
@@ -50,21 +88,19 @@ export async function POST(request: Request) {
 
     // Check admin secret password if admin role is selected
     if (role === "ADMIN") {
-      try {
-        const secretPath = path.join(process.cwd(), "..", "secret_password.txt");
-        const correctSecret = fs.readFileSync(secretPath, "utf-8").trim();
-
-        if (secretPassword !== correctSecret) {
-          return NextResponse.json(
-            { error: "Incorrect Admin Secret Password. Access Denied." },
-            { status: 400 }
-          );
-        }
-      } catch (err) {
-        console.error("Error reading secret_password.txt:", err);
+      const correctSecret = process.env.ADMIN_SECRET;
+      if (!correctSecret) {
         return NextResponse.json(
-          { error: "Server error checking admin privileges. Please contact administrator." },
-          { status: 500 }
+          { error: "Admin registration is disabled on this server." },
+          { status: 403 }
+        );
+      }
+      const given = crypto.createHash("sha256").update(String(secretPassword ?? "")).digest();
+      const want  = crypto.createHash("sha256").update(correctSecret).digest();
+      if (!crypto.timingSafeEqual(given, want)) {
+        return NextResponse.json(
+          { error: "Incorrect Admin Secret Password. Access Denied." },
+          { status: 400 }
         );
       }
     }
@@ -76,6 +112,11 @@ export async function POST(request: Request) {
         username: normalizedUsername,
         password: passwordHash,
         role,
+        birthYear,
+        birthMonth,
+        guardianStatus: minor ? "pending" : "none",
+        consentVersion: CONSENT_VERSION,
+        consentAt:      new Date(),
         xp: {
           create: {
             totalXp: 0,
@@ -91,21 +132,14 @@ export async function POST(request: Request) {
       },
     });
 
-    // Set HTTP-only session cookie
-    cookies().set("bitflow_session", user.id, {
-      httpOnly: true,
-      secure: process.env.HTTPS === "true",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-      path: "/",
-    });
+    await createSession(user.id);
+    await audit(user.id, "consent.given", user.id, `notice ${CONSENT_VERSION}${minor ? "; under 18, parent consent pending" : ""}`);
 
-    return NextResponse.json({ user });
+    return NextResponse.json({ user, guardianPending: minor });
   } catch (err: any) {
-    console.error("Registration error:", err);
-    const errorMessage = err?.message || "Internal Server Error";
+    await reportError("Registration error:", err);
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "Registration failed. Please try again." },
       { status: 500 }
     );
   }

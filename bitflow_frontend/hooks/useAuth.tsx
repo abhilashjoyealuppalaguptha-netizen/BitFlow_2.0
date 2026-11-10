@@ -8,13 +8,30 @@ interface UserProfile {
   username: string;
   role: "STUDENT" | "ADMIN";
   createdAt: string;
+  // Privacy flags from /api/auth/me (lib/privacy.ts)
+  minor?: boolean;
+  needsConsent?: boolean;
+  guardianPending?: boolean;
+  aiAllowed?: boolean;
+  // Google/GitHub sign-in (lib/oauth.ts)
+  usernamePending?: boolean;   // chooses a username at the consent prompt
+  oauth?: string[];            // connected providers
+  hasPassword?: boolean;       // false for accounts made by Google/GitHub sign-in
+  totalXp?: number;            // for the header's level chip (lib/levels.ts)
 }
+
+/** Extra sign-up fields: month/year of birth and acceptance of the privacy notice. */
+export interface ConsentFields { birthYear?: number; birthMonth?: number; consent?: boolean }
+
+/** Sign-in/sign-up result. The caller decides where to go next (by user.role). */
+export interface AuthResult { error?: string; user?: UserProfile }
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  login: (username: string, password: string, role: "STUDENT" | "ADMIN") => Promise<{ error?: string }>;
-  register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string) => Promise<{ error?: string }>;
+  login: (username: string, password: string) => Promise<AuthResult>;
+  register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string,
+             botFields?: { formToken: string; website: string }, consent?: ConsentFields) => Promise<AuthResult>;
   logout: () => Promise<void>;
   checkSession: () => Promise<void>;
 }
@@ -48,23 +65,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkSession();
   }, [checkSession]);
 
-  // Auth Guard / Redirection logic
-// Auth Guard / Redirection logic
-// Auth Guard / Redirection logic
-
-
-  const login = async (username: string, password: string, role: "STUDENT" | "ADMIN") => {
+  const login = async (username: string, password: string): Promise<AuthResult> => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
-        router.push("/");
-        return {};
+        void checkSession();   // picks up the privacy flags
+        return { user: data.user };
       } else {
         return { error: data.error || "Login failed" };
       }
@@ -77,19 +89,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     username: string,
     password: string,
     role: "STUDENT" | "ADMIN",
-    secretPassword?: string
-  ) => {
+    secretPassword?: string,
+    botFields?: { formToken: string; website: string },
+    consent?: ConsentFields
+  ): Promise<AuthResult> => {
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, secretPassword }),
+        body: JSON.stringify({ username, password, role, secretPassword, ...botFields, ...consent }),
       });
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
-        router.push("/");
-        return {};
+        void checkSession();   // picks up the privacy flags
+        return { user: data.user };
       } else {
         return { error: data.error || "Registration failed" };
       }

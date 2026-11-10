@@ -1,0 +1,21 @@
+"use client";
+/**
+ * components/studio/loaders.tsx — the Studio tools, loaded in the browser only.
+ * Their drafts live in localStorage, which a server render can't see, so rendering
+ * them on the server would mismatch on hydration.
+ */
+import dynamic from "next/dynamic";
+import PixelLoader from "@/components/pixel/PixelLoader";
+
+const loading = () => <PixelLoader label="Loading the tool…" />;
+
+export const LogicTool = dynamic(() => import("./LogicTool"), { ssr: false, loading });
+export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading });
+export const TimingTool = dynamic(() => import("./TimingTool"), { ssr: false, loading });
+export const CircuitTool = dynamic(() => import("./CircuitTool"), { ssr: false, loading });
+export const PipelineTool = dynamic(() => import("./PipelineTool"), { ssr: false, loading });
+export const NumbersTool = dynamic(() => import("./NumbersTool"), { ssr: false, loading });
+export const BooleanTool = dynamic(() => import("./BooleanTool"), { ssr: false, loading });
+export const CacheTool = dynamic(() => import("./CacheTool"), { ssr: false, loading });
+export const GeneratorsTool = dynamic(() => import("./GeneratorsTool"), { ssr: false, loading });
+export const TbGenTool = dynamic(() => import("./TbGenTool"), { ssr: false, loading });

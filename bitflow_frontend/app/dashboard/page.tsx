@@ -1,11 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { levelFromXp } from "@/lib/levels";
+import { unseenBadges } from "@/lib/pixel/rewards";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
+import { LevelChip, PixelIcon } from "@/components/pixel/PixelIcon";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 import { useAuth } from "../../hooks/useAuth";
-import { ACADEMY_TOPIC_META } from "@/lib/academy-content";
+import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
 import { loadAcademyProgress } from "@/lib/academy-progress-storage";
+import { DESIGN_STORAGE_KEY } from "@/hooks/useSimulation";
+import { STUDIO_TOOLS } from "@/lib/studio/tools";
+import type { ProfileData } from "@/lib/profile";
+import { GuardianPanel } from "@/components/ConsentGate";
+import SiteHeader from "@/components/SiteHeader";
+import AnnouncementStrip from "@/components/AnnouncementStrip";
+import { LESSONS_SYNCED } from "@/lib/lesson-sync";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
+import PixelBar from "@/components/pixel/PixelBar";
 
 /* ── Lattice background: electrons flowing along a chip-grid, converging
    on a central chip outline. Low-opacity, meant to blend not distract. ── */
@@ -224,6 +238,28 @@ const MODULES = [
       </svg>
     ),
   },
+  {
+    title: "Studio",
+    href: "/studio",
+    body: "Design visually: circuits, state machines and timing diagrams to Verilog.",
+    color: "info",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Board Lab",
+    href: "/lab",
+    body: "17 hands-on lessons on a 3D FPGA board, then onto a real one.",
+    color: "phosphor",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18v10H3zM7 7V4m5 3V4m5 3V4M7 20v-3m5 3v-3m5 3v-3M8 11h3v2H8zM15 12h.01" />
+      </svg>
+    ),
+  },
 ];
 
 const CARD_STYLES: Record<string, { text: string; bg: string; border: string; shadow: string }> = {
@@ -372,7 +408,7 @@ function BitzyMascot({ username }: { username: string }) {
         e.preventDefault();
         triggerJump();
       }}
-      className="relative flex flex-col items-center justify-center cursor-pointer select-none py-8"
+      className="relative flex flex-col items-center justify-center cursor-pointer select-none pt-16 pb-4"
     >
       <style>{`
         @keyframes bf_float  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
@@ -383,7 +419,7 @@ function BitzyMascot({ username }: { username: string }) {
 
       <div
         ref={glowRef}
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none [mask-image:radial-gradient(closest-side,black_55%,transparent)]"
         style={{ background: "radial-gradient(circle 200px at 50% 42%, rgba(0,232,122,.14), transparent 70%)" }}
       />
       {/* pedestal glow — a grounded halo the mascot appears to stand on */}
@@ -398,16 +434,16 @@ function BitzyMascot({ username }: { username: string }) {
       />
 
       <div className="relative" style={{ animation: "bf_float 4s ease-in-out infinite" }}>
-        {/* thought bubble — subtle, cycling, blends into the panel */}
+        {/* thought bubble — subtle, cycling; centred above the head so it fits any column */}
         <div
-          className="absolute -top-3 left-[calc(100%-10px)] z-10 pointer-events-none transition-opacity duration-400"
+          className="absolute -top-14 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-400"
           style={{ opacity: thoughtVisible ? 1 : 0 }}
         >
           <div className="relative bg-pit/70 backdrop-blur-sm border border-phosphor/20 rounded-xl px-3 py-2 whitespace-nowrap">
             <span className="text-[11px] text-pale">{BITZY_THOUGHTS[thoughtIdx]}</span>
           </div>
-          <span className="absolute -bottom-2 left-5 w-2.5 h-2.5 rounded-full bg-pit/70 border border-phosphor/20" />
-          <span className="absolute -bottom-4 left-3 w-1.5 h-1.5 rounded-full bg-pit/60 border border-phosphor/15" />
+          <span className="absolute -bottom-2 left-[calc(50%-2px)] w-2.5 h-2.5 rounded-full bg-pit/70 border border-phosphor/20" />
+          <span className="absolute -bottom-4 left-[calc(50%+6px)] w-1.5 h-1.5 rounded-full bg-pit/60 border border-phosphor/15" />
         </div>
 
         <svg
@@ -462,12 +498,12 @@ function BitzyMascot({ username }: { username: string }) {
   );
 }
 
-/* ── Compact heatmap (last ~12 weeks) for the narrow right column ──── */
-function buildCompactWeeks(activity: Record<string, number>) {
+/* ── Activity heatmap: the last `weeks` weeks, one column per week ──── */
+function buildCompactWeeks(activity: Record<string, number>, span = 39) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
-  start.setDate(start.getDate() - 83); // ~12 weeks
+  start.setDate(start.getDate() - (span * 7 - 1));
   const startDow = start.getDay();
   start.setDate(start.getDate() - startDow);
 
@@ -538,9 +574,11 @@ function DashboardFooter() {
           </a>
         </div>
 
-        <Link href="/about" className="text-[11px] tracking-[0.14em] text-bright uppercase hover:text-phosphor transition-colors">
-          About
-        </Link>
+        <nav className="flex gap-6 text-[11px] tracking-[0.14em] text-bright uppercase" aria-label="Site">
+          <Link href="/about" className="hover:text-phosphor transition-colors">About</Link>
+          <Link href="/privacy" className="hover:text-phosphor transition-colors">Privacy</Link>
+          <Link href="/terms" className="hover:text-phosphor transition-colors">Terms</Link>
+        </nav>
 
         <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
 
@@ -553,19 +591,103 @@ function DashboardFooter() {
 }
 
 /* ── Types for fetched data ──────────────────────────────────────── */
-type ProfileStats = {
-  totalXp: number;
-  activity: Record<string, number>;
-  totalActiveDays: number;
-  maxStreak: number;
+type ProfileStats = Pick<ProfileData, "totalXp" | "activity" | "totalActiveDays" | "maxStreak" | "totalSolved" | "totalProblems" | "recentAC" | "tracks" | "badges">;
+type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number; freezes: number };
+type QuestRow = { id: string; title: string; xp: number; target: number; progress: number; done: boolean; claimed: boolean };
+
+/** Today's three quests (/api/quests): progress bars, and a Claim button once one is finished. */
+function QuestsCard({ onXp }: { onXp: (xp: number) => void }) {
+  const [quests, setQuests] = useState<QuestRow[] | null | undefined>(undefined);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/quests").then((r) => (r.ok ? r.json() : null)).then((j) => setQuests(j?.quests ?? null)).catch(() => setQuests(null));
+  }, []);
+  const claim = async (id: string) => {
+    setBusy(id);
+    try {
+      const j = await fetch("/api/quests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((r) => r.json());
+      if (Array.isArray(j?.quests)) setQuests(j.quests);
+      if (j?.xp > 0) onXp(j.xp);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <GlassCard className="flex flex-col">
+      <div className={`${TITLE} mb-3`}>Daily quests</div>
+      {quests ? (
+        <ul className="space-y-3">
+          {quests.map((q) => (
+            <li key={q.id}>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={`text-xs min-w-0 ${q.claimed ? "text-dim" : "text-pale"}`}>{q.title}</span>
+                {q.claimed ? <span className="text-[11px] text-phosphor shrink-0">✓ +{q.xp} XP</span>
+                  : q.done ? <button onClick={() => claim(q.id)} disabled={busy === q.id}
+                                     className="shrink-0 px-2 py-0.5 rounded-md border border-phosphor/60 text-phosphor text-[11px] font-semibold hover:bg-phosphor/10 disabled:opacity-50">Claim +{q.xp} XP</button>
+                  : <span className="text-[11px] text-dim shrink-0">+{q.xp} XP</span>}
+              </div>
+              <Bar pct={(100 * q.progress) / q.target} label={`${q.title}: ${q.progress} of ${q.target}`} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-xs text-dim">{quests === undefined ? <PixelLoader size="sm" /> : "Quests couldn't load. Try refreshing."}</div>
+      )}
+      <div className="text-[11px] text-dim mt-auto pt-3">New quests every day at 00:00 UTC.</div>
+    </GlassCard>
+  );
+}
+
+const TITLE = "text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)]";
+
+function SectionTitle({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 mb-3">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-ghost">{children}</h2>
+      {action}
+    </div>
+  );
+}
+
+/** Total XP, the level in pixel lettering, and a bar to the next level. */
+function LevelValue({ xp }: { xp: number }) {
+  const { level, into, needed } = levelFromXp(xp);
+  return (
+    <div>
+      <span>{xp.toLocaleString()}</span> <LevelChip level={level} className="ml-1 align-middle" />
+      <PixelBar value={into} max={needed} segments={12} height={5} className="mt-1" label={`Level ${level}: ${into} of ${needed} XP to level ${level + 1}`} />
+    </div>
+  );
+}
+
+function Stat({ label, value, sub, tone = "text-bright" }: { label: string; value: React.ReactNode; sub?: string; tone?: string }) {
+  return (
+    <div className="rounded-xl border border-rim/60 border-t-white/10 bg-pit/40 backdrop-blur-md px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-dim">{label}</div>
+      <div className={`font-serif text-2xl leading-tight mt-0.5 ${tone}`}>{value}</div>
+      {sub && <div className="text-[11px] text-dim mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+const BAR_TONE: Record<string, "phosphor" | "info" | "violet"> = { "bg-phosphor": "phosphor", "bg-info": "info", "bg-purple-400": "violet" };
+function Bar({ pct, tone = "bg-phosphor", label }: { pct: number; tone?: string; label?: string }) {
+  return <PixelBar value={Math.min(100, Math.max(0, pct))} max={100} tone={BAR_TONE[tone] ?? "phosphor"} height={6} label={label} />;
+}
+
+const ago = (iso: string) => {
+  const d = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  return d <= 0 ? "today" : d === 1 ? "yesterday" : `${d}d ago`;
 };
-type ArenaProblemLite = { slug: string; title: string; category: string };
-type Challenge = { title: string; href: string; kind: "Arena" | "Academy" };
 
 function DashboardContent() {
   const { user, logout } = useAuth();
-  const [stats, setStats] = useState<ProfileStats | null>(null);
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const celebrate = useCelebrate();
+  // undefined = loading, null = unavailable
+  const [stats, setStats] = useState<ProfileStats | null | undefined>(undefined);
+  const [daily, setDaily] = useState<Daily | null | undefined>(undefined);
+  const [needsRecoveryCode, setNeedsRecoveryCode] = useState(false);
+  const [sandboxModule, setSandboxModule] = useState<string | null>(null);
   const [academy, setAcademy] = useState<{ done: number; total: number; lastTitle: string | null; lastSlug: string | null }>({
     done: 0,
     total: ACADEMY_TOPIC_META.length,
@@ -574,135 +696,200 @@ function DashboardContent() {
   });
 
   useEffect(() => {
-    fetch("/api/profile")
+    const load = () => {
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((json) => {
+          setStats(json?.user ? json : null);
+          // Badges earned since this browser last showed them get their moment now.
+          if (json?.user?.id && Array.isArray(json.badges)) {
+            try { celebrate(...unseenBadges(json.user.id, json.badges, window.localStorage)); } catch { /* storage blocked */ }
+          }
+        })
+        .catch(() => setStats(null));
+
+      const p = loadAcademyProgress();
+      const lastTopic = p.lastVisited ? ACADEMY_TOPIC_META.find((t) => t.slug === p.lastVisited) : undefined;
+      setAcademy({
+        done: p.completedTopics.length,
+        total: ACADEMY_TOPIC_META.length,
+        lastTitle: lastTopic?.title ?? null,
+        lastSlug: lastTopic?.slug ?? null,
+      });
+    };
+    load();
+    window.addEventListener(LESSONS_SYNCED, load);   // the account's progress arrives a moment later
+    try {
+      const draft = JSON.parse(localStorage.getItem(DESIGN_STORAGE_KEY) ?? "null");
+      setSandboxModule(typeof draft === "string" ? /\bmodule\s+(\w+)/.exec(draft)?.[1] ?? null : null);
+    } catch { /* no draft or storage blocked */ }
+
+    fetch("/api/auth/recovery-code")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setNeedsRecoveryCode(d?.hasCode === false))
+      .catch(() => {});
+    fetch("/api/daily")
       .then((r) => r.json())
       .then((json) => {
-        if (json && json.user) {
-          setStats({
-            totalXp: json.totalXp,
-            activity: json.activity,
-            totalActiveDays: json.totalActiveDays,
-            maxStreak: json.maxStreak,
-          });
-        }
+        const p = json?.problem;
+        setDaily(p ? {
+          title:        p.title,
+          href:         p.href,
+          level:        p.learningLevel,
+          bonusXp:      json.bonusXp,
+          claimedToday: json.claimedToday,
+          streak:       json.streak ?? 0,
+          freezes:      json.freezes ?? 0,
+        } : null);
       })
-      .catch(() => {});
-
-    const p = loadAcademyProgress();
-    const lastTopic = p.lastVisited ? ACADEMY_TOPIC_META.find((t) => t.slug === p.lastVisited) : undefined;
-    setAcademy({
-      done: p.completedTopics.length,
-      total: ACADEMY_TOPIC_META.length,
-      lastTitle: lastTopic?.title ?? null,
-      lastSlug: lastTopic?.slug ?? null,
-    });
-
-    (async () => {
-      const wantArena = Math.random() < 0.5;
-      if (wantArena) {
-        try {
-          const res = await fetch("/api/problems");
-          const json = await res.json();
-          const list: ArenaProblemLite[] = Array.isArray(json?.problems) ? json.problems : [];
-          if (list.length > 0) {
-            const q = list[Math.floor(Math.random() * list.length)];
-            setChallenge({ title: q.title, href: `/arena/${q.category.toLowerCase()}/${q.slug}`, kind: "Arena" });
-            return;
-          }
-        } catch {
-          /* fall through to academy pick below */
-        }
-      }
-      const t = ACADEMY_TOPIC_META[Math.floor(Math.random() * ACADEMY_TOPIC_META.length)];
-      setChallenge({ title: t.title, href: `/academy/${t.slug}`, kind: "Academy" });
-    })();
+      .catch(() => setDaily(null));
+    return () => window.removeEventListener(LESSONS_SYNCED, load);
   }, []);
 
+  const name = user?.username || "there";
   const pct = academy.total > 0 ? Math.round((academy.done / academy.total) * 100) : 0;
-  const weeks = stats ? buildCompactWeeks(stats.activity) : [];
+  const weeks = buildCompactWeeks(stats?.activity ?? {});
+  const dash = stats === undefined ? "…" : "–";
+  // Tracks still in progress first (furthest along on top), then finished ones
+  const tracks = [...(stats?.tracks ?? [])]
+    .sort((a, b) => Number(a.complete) - Number(b.complete) || b.solved / Math.max(b.total, 1) - a.solved / Math.max(a.total, 1))
+    .slice(0, 3);
+  const lastSolved = stats?.recentAC[0];
+  const lab = stats?.tracks.find((t) => t.id === "board-lab");
 
   return (
     <div className="relative min-h-screen bg-void text-bright overflow-hidden flex flex-col">
       <LatticeBackground />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-rim/50 bg-void/50 backdrop-blur-md">
-        <Link href="/" className="flex items-center gap-2">
-          <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-          <span className="font-display font-bold text-lg">BitFlow</span>
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/profile"
-            className="flex items-center gap-2 group px-2 py-1 rounded-lg hover:bg-pit/60 transition-colors"
-          >
-            <div className="w-7 h-7 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-xs shrink-0">
-              {user?.username?.charAt(0).toUpperCase() || "?"}
-            </div>
-            <span className="text-xs text-pale group-hover:text-bright transition-colors">
-              {user?.username || "Profile"}
-            </span>
+      <SiteHeader />
+
+      <main className="relative z-10 flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+        <GuardianPanel />
+        <AnnouncementStrip />
+        {needsRecoveryCode && user?.hasPassword !== false && (   /* Google/GitHub-only accounts have no password to recover */
+          <Link href="/profile#security" className="block rounded-xl border border-warn/40 bg-warn/5 px-4 py-3 text-[12px] text-warn hover:bg-warn/10 transition-colors">
+            Save a recovery code so you can reset your password if you forget it. Profile → Account security →
           </Link>
-          <button
-            onClick={() => logout()}
-            className="text-[12px] font-semibold text-ghost hover:text-danger transition-colors px-3 py-1.5 rounded-lg border border-rim hover:border-danger/40"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
+        )}
 
-      {/* Greeting */}
-      <div className="relative z-10 text-center pt-10 pb-14 px-6">
-        <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">
-          Hello, {user?.username || "there"} 👋
-        </div>
-        <h1 className="font-serif text-3xl md:text-4xl">What will you go for today?</h1>
-      </div>
+        {/* ── Greeting, headline numbers and Bitzy ─────────────────── */}
+        <section className="grid gap-6 lg:grid-cols-[1fr_300px] items-center">
+          <div>
+            <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Hello, {name} 👋</div>
+            <h1 className="font-serif text-3xl md:text-4xl mb-6">What will you go for today?</h1>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Stat label="XP" value={stats ? <LevelValue xp={stats.totalXp} /> : dash} tone="text-phosphor" />
+              <Stat label="Problems solved" value={stats ? stats.totalSolved : dash} sub={stats ? `of ${stats.totalProblems}` : undefined} />
+              <Stat label="Daily streak" value={daily ? <span className="inline-flex items-center gap-1.5">{daily.streak > 0 && <PixelIcon name="flame" size={24} label="on fire" />}{daily.streak}</span> : dash} sub={daily?.freezes ? `days in a row · ${daily.freezes} streak ${daily.freezes === 1 ? "freeze" : "freezes"}` : "days in a row"} tone="text-warn" />
+              <Stat label="Active days" value={stats ? stats.totalActiveDays : dash} sub={stats ? `best streak ${stats.maxStreak}d` : undefined} />
+            </div>
+          </div>
+          <BitzyMascot username={name} />
+        </section>
 
-      {/* 20 / 60 / 20 */}
-      <div className="relative z-10 flex-1 w-full max-w-[1500px] mx-auto px-6 pb-10 grid grid-cols-1 lg:grid-cols-[1fr_3fr_1fr] gap-5 items-start">
-        {/* ── Left 20% ───────────────────────────────────────────── */}
-        <aside className="space-y-4">
-          <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Your Progress
-            </div>
-            <div className="text-xs text-ghost mb-2">Digital Electronics</div>
-            <div className="w-full h-2 rounded-full bg-rim overflow-hidden mb-1.5">
-              <div className="h-full bg-phosphor rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-            </div>
-            <div className="text-xs text-dim">
-              {academy.done}/{academy.total} topics · {pct}%
-            </div>
-          </GlassCard>
+        {/* ── Today: daily challenge, resume, certificate tracks ─────── */}
+        <section>
+          <SectionTitle>Today</SectionTitle>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <GlassCard className="flex flex-col">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className={TITLE}>Daily Challenge</div>
+                {daily && <span className="text-[11px] text-dim uppercase tracking-wide">{daily.level}</span>}
+              </div>
+              {daily ? (
+                <>
+                  <div className="text-[14px] text-pale leading-snug">{daily.title}</div>
+                  <div className={`text-[11px] mt-2 ${daily.claimedToday ? "text-phosphor" : "text-warn"}`}>
+                    {daily.claimedToday ? "✓ Bonus claimed today" : `+${daily.bonusXp} XP bonus if solved today`}
+                  </div>
+                  <div className="mt-auto pt-4 flex items-center justify-between gap-3">
+                    <Link
+                      href={daily.href}
+                      className="px-3 py-1.5 rounded-lg border border-phosphor/60 text-phosphor text-[12px] font-semibold hover:bg-phosphor/10 transition-colors"
+                    >
+                      {daily.claimedToday ? "Open it again" : "Solve it →"}
+                    </Link>
+                    <Link href="/leaderboard" className="text-[11px] text-ghost hover:text-phosphor transition-colors">
+                      Leaderboard →
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-dim">{daily === undefined ? <PixelLoader size="sm" /> : "No challenge today."}</div>
+              )}
+            </GlassCard>
 
-          <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Continue where you left off
-            </div>
-            <div className="space-y-3">
-              <Link href={academy.lastSlug ? `/academy/${academy.lastSlug}` : "/academy"} className="flex gap-2 group">
-                <span className="text-phosphor text-xs font-bold">01</span>
-                <span className="text-xs text-ghost group-hover:text-bright transition-colors">
-                  {academy.lastTitle ? `Resume "${academy.lastTitle}"` : "Start Academy"}
-                </span>
+            <QuestsCard onXp={(xp) => setStats((s) => (s ? { ...s, totalXp: s.totalXp + xp } : s))} />
+
+            <GlassCard>
+              <div className={`${TITLE} mb-3`}>Continue where you left off</div>
+              <div className="space-y-4">
+                <Link href={academy.lastSlug ? `/academy/${academy.lastSlug}` : "/academy"} className="block group">
+                  <div className="flex gap-2 mb-1.5">
+                    <span className="text-purple-400 text-xs font-bold">01</span>
+                    <span className="text-xs text-ghost group-hover:text-bright transition-colors">
+                      {academy.lastTitle ? `Resume "${academy.lastTitle}"` : "Start the Academy"}
+                    </span>
+                  </div>
+                  <Bar pct={pct} tone="bg-purple-400" label="Academy progress" />
+                  <div className="text-[11px] text-dim mt-1">Digital Electronics · {academy.done}/{academy.total} topics · {pct}%</div>
+                </Link>
+                <Link href="/lab" className="block group">
+                  <div className="flex gap-2 mb-1.5">
+                    <span className="text-info text-xs font-bold">02</span>
+                    <span className="text-xs text-ghost group-hover:text-bright transition-colors">
+                      {lab?.solved ? "Back to the Board Lab" : "Start the Board Lab"}
+                    </span>
+                  </div>
+                  <Bar pct={lab?.total ? (100 * lab.solved) / lab.total : 0} tone="bg-info" label="Board Lab progress" />
+                  <div className="text-[11px] text-dim mt-1">Board Lab · {lab?.solved ?? 0}/{lab?.total ?? "…"} lessons</div>
+                </Link>
+                <Link href="/sandbox" className="flex gap-2 group">
+                  <span className="text-phosphor text-xs font-bold">03</span>
+                  <span className="text-xs text-ghost group-hover:text-bright transition-colors">
+                    {sandboxModule ? <>Back to <span className="font-mono text-pale">{sandboxModule}</span> in the Sandbox</> : "Open the Sandbox IDE"}
+                  </span>
+                </Link>
+                <Link href="/arena" className="flex gap-2 group">
+                  <span className="text-warn text-xs font-bold">04</span>
+                  <span className="text-xs text-ghost group-hover:text-bright transition-colors">
+                    {lastSolved ? `Last solved "${lastSolved.title}". Find the next one in the Arena` : "Solve your first problem in the Arena"}
+                  </span>
+                </Link>
+              </div>
+            </GlassCard>
+
+            <GlassCard className="md:col-span-2 lg:col-span-1">
+              <div className={`${TITLE} mb-3`}>Certificate tracks</div>
+              {tracks.length > 0 ? (
+                <div className="space-y-3">
+                  {tracks.map((t) => (
+                    <div key={t.id}>
+                      <div className="flex items-baseline justify-between gap-2 mb-1">
+                        <span className="text-xs text-pale truncate">{t.name}</span>
+                        <span className={`text-[11px] shrink-0 ${t.complete ? "text-phosphor" : "text-dim"}`}>
+                          {t.complete ? "✓ complete" : `${t.solved}/${t.total}`}
+                        </span>
+                      </div>
+                      <Bar pct={t.total ? (100 * t.solved) / t.total : 0} tone={t.complete ? "bg-phosphor" : "bg-info"} label={`${t.name} progress`} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-dim">{stats === undefined ? <PixelLoader size="sm" /> : "Solve Arena problems to make progress on a track."}</div>
+              )}
+              <Link href="/profile" className="block text-[11px] text-ghost hover:text-phosphor transition-colors mt-3">
+                All tracks and certificates →
               </Link>
-              <Link href="/sandbox" className="flex gap-2 group">
-                <span className="text-info text-xs font-bold">02</span>
-                <span className="text-xs text-ghost group-hover:text-bright transition-colors">Resume Sandbox IDE</span>
-              </Link>
-              <Link href="/arena" className="flex gap-2 group">
-                <span className="text-warn text-xs font-bold">03</span>
-                <span className="text-xs text-ghost group-hover:text-bright transition-colors">Pick up in Arena</span>
-              </Link>
-            </div>
-          </GlassCard>
-        </aside>
+            </GlassCard>
+          </div>
+        </section>
 
-        {/* ── Middle 60% ─────────────────────────────────────────── */}
-        <main>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* ── Workspaces ─────────────────────────────────────────────── */}
+        <section>
+          <SectionTitle>Workspaces</SectionTitle>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {MODULES.map((m) => {
               const s = CARD_STYLES[m.color];
               return (
@@ -712,14 +899,14 @@ function DashboardContent() {
                   className={`group flex flex-col justify-between p-4 rounded-xl
                               bg-pit/40 backdrop-blur-md border border-rim
                               transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-                              hover:-translate-y-1 hover:scale-[1.04]
+                              hover:-translate-y-1 hover:scale-[1.03]
                               ${s.border} ${s.shadow}`}
                 >
                   <div>
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${s.bg} ${s.text} border border-current/20`}>
                       {m.icon}
                     </div>
-                    <h2 className={`font-serif text-base mb-1 ${s.text}`}>{m.title}</h2>
+                    <h3 className={`font-serif text-base mb-1 ${s.text}`}>{m.title}</h3>
                     <p className="text-[11px] text-ghost leading-snug">{m.body}</p>
                   </div>
                   <div className={`mt-3 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider opacity-70 group-hover:opacity-100 transition-opacity ${s.text}`}>
@@ -732,62 +919,69 @@ function DashboardContent() {
               );
             })}
           </div>
+        </section>
 
-          <BitzyMascot username={user?.username || "there"} />
-        </main>
+        {/* ── Design Studio quick launch ─────────────────────────────── */}
+        <section>
+          <SectionTitle action={<Link href="/studio" className="text-[11px] text-ghost hover:text-info transition-colors">All Studio tools →</Link>}>
+            Design Studio
+          </SectionTitle>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+            {STUDIO_TOOLS.map((t) => (
+              <Link
+                key={t.href}
+                href={t.href}
+                title={t.blurb}
+                className="group flex items-center gap-3 rounded-xl border border-rim/60 bg-pit/40 backdrop-blur-md px-4 py-3 hover:border-info/50 transition-colors"
+              >
+                <span className="text-xl text-info w-7 text-center shrink-0" aria-hidden>{t.icon}</span>
+                <span className="text-[13px] text-pale group-hover:text-bright transition-colors">{t.title}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
 
-        {/* ── Right 20% ──────────────────────────────────────────── */}
-        <aside className="space-y-4">
+        {/* ── Activity and recent solves ─────────────────────────────── */}
+        <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Activity
-            </div>
-            <div className="flex gap-[3px] overflow-x-auto">
+            <div className={`${TITLE} mb-3`}>Activity</div>
+            {/* Columns stretch to the card's width, so the grid fills any screen */}
+            <div className="flex gap-[3px] max-w-[760px]">
               {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-[3px] shrink-0">
+                <div key={wi} className="flex-1 min-w-0 flex flex-col gap-[3px]">
                   {week.map((day, di) => (
-                    <div key={di} title={`${day.key}: ${day.count}`} className={`w-[9px] h-[9px] rounded-[2px] ${levelForCount(day.count)}`} />
+                    <div key={di} title={`${day.key}: ${day.count}`} className={`aspect-square rounded-[2px] ${levelForCount(day.count)}`} />
                   ))}
                 </div>
               ))}
             </div>
-            {stats && (
-              <div className="text-xs text-dim mt-2">
-                {stats.totalActiveDays} active days · {stats.maxStreak}d max streak
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-xs text-dim">
+              <span>{stats ? `${stats.totalActiveDays} active days · ${stats.maxStreak}d max streak · last 9 months` : "Last 9 months"}</span>
+              <span className="flex items-center gap-1 text-[10px]">
+                Less {[0, 1, 2, 3].map((n) => <span key={n} className={`inline-block w-[9px] h-[9px] rounded-[2px] ${levelForCount(n)}`} />)} More
+              </span>
+            </div>
+          </GlassCard>
+
+          <GlassCard>
+            <div className={`${TITLE} mb-3`}>Recently solved</div>
+            {stats?.recentAC.length ? (
+              <ul className="space-y-2">
+                {stats.recentAC.slice(0, 5).map((r) => (
+                  <li key={`${r.slug}-${r.submittedAt}`} className="flex items-baseline justify-between gap-2">
+                    <Link href={r.href} className="text-xs text-pale hover:text-phosphor transition-colors truncate">{r.title}</Link>
+                    <span className="text-[11px] text-dim shrink-0">{ago(r.submittedAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-xs text-dim">
+                {stats === undefined ? <PixelLoader size="sm" /> : <PixelEmpty compact title="Nothing yet" action={<Link href="/arena" className="text-ghost hover:text-phosphor">Try the Arena →</Link>} />}
               </div>
             )}
           </GlassCard>
-
-          <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-2">
-              Your XP Points
-            </div>
-            <div className="flex items-center gap-2">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ filter: "drop-shadow(0 0 6px rgba(0,232,122,0.7))" }}>
-                <path d="M12 2L4 9l8 13 8-13-8-7z" fill="#00e87a" fillOpacity="0.25" stroke="#00e87a" strokeWidth="1.5" strokeLinejoin="round" />
-                <path d="M4 9h16M9 9l3-7 3 7M9 9l3 13M15 9l-3 13" stroke="#00e87a" strokeWidth="1" strokeOpacity="0.6" />
-              </svg>
-              <div className="font-serif text-2xl text-phosphor">{(stats?.totalXp ?? 0).toLocaleString()}</div>
-            </div>
-          </GlassCard>
-
-          <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Your Challenge
-            </div>
-            {challenge ? (
-              <Link href={challenge.href} className="block group">
-                <span className="text-xs uppercase tracking-wide text-dim">{challenge.kind}</span>
-                <div className="text-[13px] text-pale group-hover:text-phosphor transition-colors leading-snug mt-1">
-                  {challenge.title}
-                </div>
-              </Link>
-            ) : (
-              <div className="text-xs text-dim">Loading…</div>
-            )}
-          </GlassCard>
-        </aside>
-      </div>
+        </section>
+      </main>
 
       <DashboardFooter />
     </div>

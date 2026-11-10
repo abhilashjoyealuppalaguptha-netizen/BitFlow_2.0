@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,6 +55,29 @@ class Settings(BaseSettings):
         ge=1,
         le=300,
         description="Hard ceiling a caller may request via the API.",
+    )
+    max_concurrent_simulations: int = Field(
+        default=4,
+        ge=1,
+        description="Simulations run at once; further requests wait their turn.",
+    )
+    max_heavy_simulations: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Heavy jobs (Verilator, cocotb, VHDL testbenches, formal, FPGA place-and-route, equivalence, "
+            "ASIC) run at once in their own lane, so a 30 s build never blocks a quick Icarus run. "
+            "0 = share the light pool, as before (right for small hosts: less memory at once)."
+        ),
+    )
+    result_cache_mb: int = Field(
+        default=24,
+        ge=0,
+        description="Memory for the result cache: identical requests are answered from memory. 0 disables it.",
+    )
+    warmup: bool = Field(
+        default=True,
+        description="After startup, run one tiny job in the background so the first real request isn't a cold start.",
     )
 
     # ── Container resource caps ───────────────────────────────────────────────
@@ -125,11 +148,26 @@ class Settings(BaseSettings):
         default=10001,
         description="GID of the non-root user inside the sandbox container.",
     )
+    cocotb_enabled: bool = Field(
+        default=True,
+        description="Accept Python (cocotb) testbenches. They run user Python; see langs.py for the limits.",
+    )
 
     # ── JWT authentication & Security ─────────────────────────────────────
-    jwt_secret: str = Field(
-        default="bitflow-dev-secret-change-in-production",
+    # One of the two is required — no default. A public default secret lets
+    # anyone mint tokens.
+    jwt_secret: str | None = Field(
+        default=None,
+        min_length=32,
         description="Shared HMAC-SHA256 secret for signing/verifying JWTs between frontend and backend.",
+    )
+    jwt_public_key: str | None = Field(
+        default=None,
+        description=(
+            "ES256 public key (PEM; literal \\n allowed). When set, only tokens signed with the "
+            "frontend's JWT_PRIVATE_KEY are accepted and jwt_secret is ignored. Nothing secret "
+            "lives on the API host."
+        ),
     )
     enable_docs: bool = Field(
         default=False,
@@ -141,6 +179,21 @@ class Settings(BaseSettings):
     def sandbox_user(self) -> str:
         """Returns 'uid:gid' string expected by the Docker SDK's `user` param."""
         return f"{self.sandbox_uid}:{self.sandbox_gid}"
+
+    @model_validator(mode="after")
+    def _need_jwt_key(self) -> "Settings":
+        if not self.jwt_secret and not self.jwt_public_key:
+            raise ValueError("Set JWT_PUBLIC_KEY (ES256) or JWT_SECRET (32+ chars).")
+        return self
+
+    @field_validator("jwt_secret", "jwt_public_key", mode="before")
+    @classmethod
+    def _trim_key(cls, v: str | None) -> str | None:
+        """Drop spaces/newlines picked up when pasting into a dashboard; blank means unset."""
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
 
     @field_validator("mem_limit")
     @classmethod

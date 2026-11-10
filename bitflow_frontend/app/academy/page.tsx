@@ -13,7 +13,8 @@ import {
   ACADEMY_TOPIC_META,
   DIFFICULTY_LABELS,
   DIFFICULTY_STYLES,
-} from "@/lib/academy-content";
+} from "@/lib/academy-meta";
+import SiteHeader from "@/components/SiteHeader";
 
 export default function AcademyHubPage() {
   const [activeTab, setActiveTab] = useState<"topics" | "roadmap">("topics");
@@ -32,34 +33,7 @@ export default function AcademyHubPage() {
           }}
         />
 
-        <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 group">
-              <img
-                src="/bitflow_logo_2.png"
-                alt="BitFlow"
-                className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
-              />
-              <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
-            </Link>
-            <span className="text-rim">·</span>
-            <span className="font-mono text-[11px] text-ghost">Digital Electronics Academy</span>
-          </div>
-          <div className="flex items-center gap-5 font-mono text-[11px]">
-            <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/learn" className="text-ghost hover:text-bright transition-colors">
-              Learning Path
-            </Link>
-            <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
-              HDL Arena
-            </Link>
-            <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
-              Sandbox
-            </Link>
-          </div>
-        </header>
+        <SiteHeader />
 
         {/* Hero Header */}
         <div className="relative z-[1] px-6 py-10 border-b border-rim/30">
@@ -73,7 +47,7 @@ export default function AcademyHubPage() {
                 <span className="text-info">explore VLSI career tracks.</span>
               </h1>
               <p className="font-mono text-[12px] text-ghost leading-relaxed">
-                Curated academic topics from Boolean algebra through memory systems, plus an interactive career roadmap for RTL, DV, DFT, and Physical Design.
+                From your first bit to the university and GATE syllabus, with circuits you can click, plus an interactive career roadmap for RTL, DV, DFT, and Physical Design.
               </p>
             </div>
 
@@ -192,7 +166,7 @@ export default function AcademyHubPage() {
           <p className="font-mono text-[10px] text-dim">
             BitFlow · Digital Electronics Academy
             <span className="mx-2">·</span>
-            8 modules · articles · quizzes · flashcards · interactives · VLSI career roadmap
+            {ACADEMY_TOPIC_META.length} chapters · live circuits · worked examples · quizzes · VLSI career roadmap
           </p>
         </footer>
       </div>

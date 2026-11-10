@@ -18,12 +18,24 @@
 import React, { useState, memo } from "react";
 import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
+import SubmissionHistory from "./SubmissionHistory";
+import OptimizationBoard from "./OptimizationBoard";
+import { designReviewPrompt, type DesignScores } from "@/lib/ai-prompts";
+import Discussion from "./Discussion";
+import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
+import PixelBar from "@/components/pixel/PixelBar";
 
 interface ProblemStatementProps {
   problem:    Problem;
   progress:   ProgressRecord;
   submission: SubmissionResult | null;
   onUnlockHint?: (tier: 1 | 2 | 3) => void;
+  /** Attempt history (Load / Diff) — shown when given. */
+  history?: React.ComponentProps<typeof SubmissionHistory>;
+  /** Wrong answers: opens the AI tutor on this failure. */
+  onExplainFailure?: () => void;
+  /** After an accepted submit: ask the tutor to review the design (ReviewDesignButton). */
+  onReviewDesign?: (prompt: string) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +67,6 @@ const VerdictPanel = memo(function VerdictPanel({
   result: SubmissionResult;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const pct = result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0;
 
   return (
     <div className={`rounded border ${result.accepted ? "border-phosphor/40 bg-phosphor/5" : "border-danger/40 bg-danger/5"} overflow-hidden`}>
@@ -82,12 +93,7 @@ const VerdictPanel = memo(function VerdictPanel({
       </div>
 
       {/* Progress bar */}
-      <div className="mx-3 mb-2 h-1 bg-surface rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${result.accepted ? "bg-phosphor" : "bg-danger"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <PixelBar value={result.passed} max={result.total} tone={result.accepted ? "phosphor" : "danger"} label="Tests passed" height={4} className="px-3 mb-2" />
 
       <div className="px-3 pb-2 font-mono text-[9px] text-ghost">
         {result.passed}/{result.total} testcases passed · {Math.round(result.totalDurationMs)}ms
@@ -181,11 +187,45 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** "Explain my failure": hands the failed submission to the AI tutor. */
+/**
+ * After an accepted submit: open the tutor with a review of this design, using the
+ * grader's scores and the learner's place on the leaderboard (lib/ai-prompts.ts).
+ */
+export function ReviewDesignButton({ slug, submission, onAsk }: {
+  slug: string; onAsk: (prompt: string) => void;
+  submission: Pick<DesignScores, "metrics" | "timing">;
+}) {
+  const ask = async () => {
+    const sort = submission.timing ? "?sort=fmax" : "";
+    const board = await fetch(`/api/problems/${encodeURIComponent(slug)}/optimization${sort}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    onAsk(designReviewPrompt({ ...submission, rank: board?.me ? { rank: board.me.rank, solvers: board.solvers } : null }));
+  };
+  return (
+    <button onClick={ask}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-phosphor/40 bg-phosphor/10 font-mono text-[11px] text-phosphor hover:bg-phosphor/20 transition-colors">
+      ✦ Review my design
+    </button>
+  );
+}
+
+export function ExplainFailureButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-info/40 bg-info/10 font-mono text-[11px] text-info hover:bg-info/20 transition-colors">
+      ✦ Explain my failure
+    </button>
+  );
+}
+
 export default function ProblemStatement({
   problem,
   progress,
   submission,
   onUnlockHint,
+  history,
+  onExplainFailure,
+  onReviewDesign,
 }: ProblemStatementProps) {
   const problemProgress = progress.problems[problem.id];
   const hintsUnlocked   = problemProgress?.hintsUnlocked ?? [];
@@ -234,6 +274,28 @@ export default function ProblemStatement({
         {submission && (
           <Section title="Last Submission">
             <VerdictPanel result={submission} />
+            {!submission.accepted && onExplainFailure && <ExplainFailureButton onClick={onExplainFailure} />}
+            {submission.accepted && onReviewDesign && history && <ReviewDesignButton slug={history.slug} submission={submission} onAsk={onReviewDesign} />}
+            {submission.counterexample && <CounterexampleView data={submission.counterexample} />}
+            {submission.failingWaveform && <FailingWaveformView data={submission.failingWaveform} />}
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Your Attempts">
+            <SubmissionHistory {...history} />
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Smallest Design">
+            <OptimizationBoard slug={history.slug} refreshKey={submission} />
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Editorial & Discussion">
+            <Discussion slug={history.slug} refreshKey={submission} />
           </Section>
         )}
 

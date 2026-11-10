@@ -17,6 +17,9 @@
 import Link from "next/link";
 import type { ProblemRunState } from "@/hooks/useProblem";
 import type { Difficulty } from "@/lib/problem-types";
+import { NavMenuButton } from "@/components/SiteHeader";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
+import PixelBar from "@/components/pixel/PixelBar";
 
 const DIFF_DOT: Record<Difficulty, string> = {
   beginner:     "bg-phosphor",
@@ -34,6 +37,9 @@ interface ProblemToolbarProps {
   submittingTotal:  number;
   onRun:            () => void;
   onSubmit:         () => void;
+  onToggleTutor?:   () => void;
+  onSynthesize?:    () => void;
+  onReport?:        () => void;
 }
 
 function SubmittingProgress({
@@ -43,15 +49,9 @@ function SubmittingProgress({
   index: number;
   total: number;
 }) {
-  const pct = total > 0 ? Math.round(((index) / total) * 100) : 0;
   return (
     <div className="flex items-center gap-2">
-      <div className="w-20 h-1 bg-surface rounded-full overflow-hidden">
-        <div
-          className="h-full bg-info transition-all duration-200 rounded-full"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <PixelBar value={index} max={total} segments={10} tone="info" height={5} className="w-20" label="Tests judged" />
       <span className="font-mono text-[9px] text-info/70 tabular-nums">
         {index}/{total}
       </span>
@@ -68,6 +68,9 @@ export default function ProblemToolbar({
   submittingTotal,
   onRun,
   onSubmit,
+  onToggleTutor,
+  onSynthesize,
+  onReport,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
@@ -77,6 +80,7 @@ export default function ProblemToolbar({
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-surface border-b border-rim z-10">
       {/* ── Left ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
+        <NavMenuButton />
         {/* Back link */}
         <Link
           href="/learn"
@@ -92,7 +96,7 @@ export default function ProblemToolbar({
 
         {/* Logo mark */}
         <img
-          src="/bitflow_logo_2.png"
+          src="/bitflow_logo_64.png"
           alt="BitFlow"
           className="w-5 h-5 object-contain rounded opacity-80"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -121,6 +125,36 @@ export default function ProblemToolbar({
           <SubmittingProgress index={submittingIndex} total={submittingTotal} />
         )}
 
+        {onReport && (
+          <button
+            onClick={onReport}
+            title="Lab report: code, simulation output, waveform and synthesis, ready to print or save as PDF"
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+          >
+            Report
+          </button>
+        )}
+
+        {onSynthesize && (
+          <button
+            onClick={onSynthesize}
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+            title="Synthesize with Yosys: cells, latches, schematic, FSM diagram"
+          >
+            Synth
+          </button>
+        )}
+
+        {onToggleTutor && (
+          <button
+            onClick={onToggleTutor}
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+            title="Ask the AI tutor for a hint"
+          >
+            Tutor
+          </button>
+        )}
+
         {/* Run Code button */}
         <button
           onClick={onRun}
@@ -137,7 +171,7 @@ export default function ProblemToolbar({
         >
           {isRunning ? (
             <>
-              <span className="w-1 h-1 rounded-full bg-current animate-pulse_soft" />
+              <PixelSpinner size={12} />
               Running…
             </>
           ) : (
@@ -171,7 +205,7 @@ export default function ProblemToolbar({
         >
           {isSubmitting ? (
             <>
-              <span className="w-1 h-1 rounded-full bg-current animate-pulse_soft" />
+              <PixelSpinner size={12} />
               Judging…
             </>
           ) : (

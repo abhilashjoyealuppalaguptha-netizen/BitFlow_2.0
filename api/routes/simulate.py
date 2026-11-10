@@ -22,13 +22,15 @@ Flow for every request:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import time
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
 from api.config import settings
-from api.exceptions import InvalidSourceError, SourceTooLargeError, TimeoutValueError
+from api.exceptions import InvalidSourceError
 from api.models import SimulateJsonRequest, SimulateResponse, WaveformInfo
 from api.sandbox import run_simulation
 from api.utils import (
@@ -39,9 +41,15 @@ from api.utils import (
     write_source_files,
 )
 from api.jwt_auth import verify_jwt
+from api.lanes import lane_for_simulation, light
+from api.result_cache import finish, lookup
 
 logger  = logging.getLogger(__name__)
 router  = APIRouter(prefix="/simulate", tags=["Simulation"])
+
+# Caps CPU-heavy runs per API process; extra requests queue in their lane (api/lanes.py).
+# ponytail: per-process limit — with several API replicas, use a shared queue.
+_sim_slots = light   # the light lane; kept under this name for callers and tests
 
 
 # =============================================================================
@@ -52,6 +60,11 @@ async def _execute_simulation(
     design_v: str,
     testbench_v: str,
     timeout: int,
+    lint: bool = False,
+    files: dict | None = None,
+    design_language: str = "verilog",
+    testbench_language: str = "verilog",
+    simulator: str = "icarus",
 ) -> SimulateResponse:
     """
     Core simulation pipeline shared by both endpoints.
@@ -64,23 +77,39 @@ async def _execute_simulation(
     Returns:
         SimulateResponse — the complete JSON response body.
     """
-    tmpdir, workspace_id = create_workspace()
+    # File work runs in a thread: a large VCD (read + base64) must not stall other requests.
+    tmpdir, workspace_id = await asyncio.to_thread(create_workspace)
     logger.info("ws=%s | New simulation request timeout=%ds", workspace_id, timeout)
 
     try:
         # Write source files to the host-side workspace.
         # The directory is bind-mounted into /workspace inside the container.
-        write_source_files(tmpdir, design_v, testbench_v)
+        await asyncio.to_thread(write_source_files, tmpdir, design_v, testbench_v, files)
         logger.debug("ws=%s | Source files written to %s", workspace_id, tmpdir)
 
-        # Launch the sandbox container and wait for it to finish.
-        # This is the only async-blocking call in the pipeline.
-        result = await run_simulation(tmpdir, workspace_id, timeout)
+        # Run the simulation (waits for a free slot first).
+        t_queued = time.monotonic()
+        async with lane_for_simulation(design_language, testbench_language, simulator):
+            queue_ms = (time.monotonic() - t_queued) * 1000
+            result = await run_simulation(tmpdir, workspace_id, timeout, lint, design_language, testbench_language, simulator)
 
         # Read the VCD file if the testbench produced one.
         vcd_base64, vcd_size = (None, 0)
         if settings.include_vcd_in_response:
-            vcd_base64, vcd_size = read_vcd(tmpdir)
+            vcd_base64, vcd_size = await asyncio.to_thread(read_vcd, tmpdir)
+
+        # One machine-readable line per run, for log aggregation / alerting.
+        logger.info(json.dumps({
+            "event":        "simulation",
+            "workspace_id": workspace_id,
+            "status":       result.status,
+            "exit_code":    result.exit_code,
+            "duration_ms":  result.duration_ms,
+            "queue_ms":     round(queue_ms, 1),
+            "timeout_s":    timeout,
+            "source_bytes": len(design_v) + len(testbench_v),
+            "vcd_bytes":    vcd_size,
+        }))
 
         return SimulateResponse(
             status       = result.status,
@@ -95,11 +124,13 @@ async def _execute_simulation(
             ),
             duration_ms  = result.duration_ms,
             workspace_id = workspace_id,
+            assertions   = result.assertions,
+            coverage     = result.coverage,
         )
 
     finally:
         # Always delete the temp directory regardless of outcome.
-        cleanup_workspace(tmpdir)
+        await asyncio.to_thread(cleanup_workspace, tmpdir)
         logger.debug("ws=%s | Workspace cleaned up", workspace_id)
 
 
@@ -124,7 +155,7 @@ async def _execute_simulation(
         503: {"description": "Docker daemon unavailable or image not found."},
     },
 )
-async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
+async def simulate_json(body: SimulateJsonRequest) -> Response:
     """
     **POST /simulate**
 
@@ -147,11 +178,28 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
     # Size-check before touching Docker
     check_source_size(body.design_v,    settings.max_source_bytes, "design_v")
     check_source_size(body.testbench_v, settings.max_source_bytes, "testbench_v")
+    for name, content in (body.files or {}).items():
+        check_source_size(content, settings.max_source_bytes, name)
 
     # Clamp timeout to the server ceiling
     timeout = min(body.timeout or settings.timeout_seconds, settings.max_timeout_seconds)
 
-    return await _execute_simulation(body.design_v, body.testbench_v, timeout)
+    if body.testbench_language == "python" and not settings.cocotb_enabled:
+        raise InvalidSourceError("Python (cocotb) testbenches are disabled on this server.")
+
+    # Identical requests (re-running the same code, everyone's starter code) are answered from memory.
+    # Python (cocotb) testbenches seed from the clock, so they are never cached.
+    key, hit = lookup("simulate", {
+        "d": body.design_v, "t": body.testbench_v, "timeout": timeout, "lint": body.lint, "files": body.files or {},
+        "dl": body.design_language, "tl": body.testbench_language, "sim": body.simulator,
+    }, use_cache=body.testbench_language != "python")
+    if hit is not None:
+        return hit
+
+    result = await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint, body.files,
+                                       body.design_language, body.testbench_language, body.simulator)
+    # Only definite answers: a timeout or infrastructure error depends on how busy this machine was.
+    return finish(result, key, str(getattr(result.status, "value", result.status)) in ("success", "compile_error"))
 
 
 # =============================================================================

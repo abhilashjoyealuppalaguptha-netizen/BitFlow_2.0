@@ -16,6 +16,9 @@
  * JSON body sent to POST /simulate.
  * Matches SimulateJsonRequest in api/models.py.
  */
+export type DesignLanguage    = "verilog" | "vhdl";
+export type TestbenchLanguage = "verilog" | "vhdl" | "python";
+
 export interface SimulateRequest {
   /** Full source of design.v */
   design_v: string;
@@ -23,11 +26,51 @@ export interface SimulateRequest {
   /** Full source of tb.v */
   testbench_v: string;
 
+  /** Extra input files next to design.v, e.g. a $readmemh hex file. */
+  files?: Record<string, string>;
+
+  /** Language of design_v (default verilog, which includes the SystemVerilog subset). */
+  design_language?: DesignLanguage;
+
+  /** Language of testbench_v: Verilog, VHDL (needs a VHDL design) or a cocotb Python module. */
+  testbench_language?: TestbenchLanguage;
+
   /**
    * Override timeout in seconds (1–120).
    * Omit to use the server default (30 s).
    */
   timeout?: number;
+
+  /** Also run Verilator lint on design_v; findings are appended to stdout. */
+  lint?: boolean;
+
+  /** Verilog testbenches: Icarus (default, fast) or Verilator with assertions + coverage (api/verilator_sim.py). */
+  simulator?: Simulator;
+}
+
+/** "browser": Icarus as WebAssembly in the page (lib/sim/browser-sim.ts); the others run on the server. */
+export type Simulator = "browser" | "icarus" | "verilator";
+
+/** A failed SystemVerilog assertion (Verilator flow). time is in the testbench's time units. */
+export interface AssertionFailure {
+  time: number;
+  file: string;
+  line: number;
+  scope: string;
+  message: string;
+  severity: "error" | "warning";
+}
+
+export interface CoverageCount { hit: number; total: number; percent: number | null }
+
+/** Coverage of design.v from a Verilator run. */
+export interface Coverage {
+  summary: { line: CoverageCount; branch: CoverageCount; toggle: CoverageCount; user: CoverageCount };
+  /** file -> line -> hits */
+  lines: Record<string, Record<string, number>>;
+  branches: { file: string; line: number; side: string; hits: number }[];
+  toggles: { signal: string; file: string; line: number; hits: number }[];
+  covers: { file: string; line: number; name: string; hits: number }[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,6 +154,10 @@ export interface SimulateResponse {
    * Useful for correlating frontend actions with backend logs.
    */
   workspace_id: string;
+
+  /** Verilator flow only: failed assertions and design coverage. */
+  assertions?: AssertionFailure[];
+  coverage?: Coverage | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

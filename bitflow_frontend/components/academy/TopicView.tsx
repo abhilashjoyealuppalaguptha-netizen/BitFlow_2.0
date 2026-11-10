@@ -12,12 +12,15 @@ import type { AcademyTopic } from "@/lib/academy-types";
 import {
   DIFFICULTY_LABELS,
   DIFFICULTY_STYLES,
-} from "@/lib/academy-content";
+} from "@/lib/academy-meta";
 import {
   markTopicVisited,
   markTopicCompleted,
   loadAcademyProgress,
+  quizPassed,
 } from "@/lib/academy-progress-storage";
+import SiteHeader from "@/components/SiteHeader";
+import { LESSONS_SYNCED, reportLesson } from "@/lib/lesson-sync";
 
 type Tab = "learn" | "quiz" | "flashcards" | "videos";
 
@@ -35,20 +38,25 @@ export default function TopicView({ topic, prev, next }: Props) {
     markTopicVisited(topic.slug);
     const p = loadAcademyProgress();
     setCompleted(p.completedTopics.includes(topic.slug));
+    // Finished on another device: the account's progress arrives a moment later.
+    const refresh = () => setCompleted(loadAcademyProgress().completedTopics.includes(topic.slug));
+    window.addEventListener(LESSONS_SYNCED, refresh);
+    return () => window.removeEventListener(LESSONS_SYNCED, refresh);
   }, [topic.slug]);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "learn",       label: "Article" },
     { id: "quiz",        label: "Quiz",        count: topic.quiz.length },
     { id: "flashcards",  label: "Flashcards",  count: topic.flashcards.length },
-    { id: "videos",      label: "Videos",      count: topic.videos.length },
+    ...(topic.videos.length ? [{ id: "videos" as Tab, label: "Videos", count: topic.videos.length }] : []),
   ];
 
   return (
     <div className="min-h-screen bg-void text-bright">
       <ScrollUnlock />
 
-      <header className="sticky top-0 z-10 h-12 flex items-center justify-between px-6 bg-surface/90 border-b border-rim backdrop-blur-sm">
+      <SiteHeader />
+      <header className="sticky top-14 z-20 h-12 flex items-center justify-between px-6 bg-surface/90 border-b border-rim backdrop-blur-sm">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/academy" className="font-mono text-[10px] text-dim hover:text-ghost shrink-0">
             ← Academy
@@ -61,9 +69,6 @@ export default function TopicView({ topic, prev, next }: Props) {
             </span>
           )}
         </div>
-        <Link href="/" className="font-mono text-[10px] text-dim hover:text-ghost shrink-0">
-          Sandbox
-        </Link>
       </header>
 
       <div className="px-6 py-8 border-b border-rim/30 bg-gradient-to-b from-surface/15 to-transparent">
@@ -84,7 +89,7 @@ export default function TopicView({ topic, prev, next }: Props) {
           <h1 className="font-display text-[24px] font-bold text-bright mb-2">
             {topic.title}
           </h1>
-          <p className="font-mono text-[11px] text-ghost/80 leading-relaxed">
+          <p className="font-display font-normal text-[15px] text-ghost leading-relaxed">
             {topic.summary}
           </p>
         </div>
@@ -97,7 +102,7 @@ export default function TopicView({ topic, prev, next }: Props) {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`font-mono text-[10px] px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+              className={`font-display font-medium text-[13px] px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "border-info text-info"
                   : "border-transparent text-dim hover:text-ghost"
@@ -105,14 +110,14 @@ export default function TopicView({ topic, prev, next }: Props) {
             >
               {t.label}
               {t.count !== undefined && (
-                <span className="ml-1.5 text-[8px] opacity-60">({t.count})</span>
+                <span className="ml-1.5 text-[11px] opacity-60">({t.count})</span>
               )}
             </button>
           ))}
         </div>
       </div>
 
-      <main className="max-w-3xl mx-auto px-6 py-8">
+      <main className="max-w-3xl mx-auto px-6 py-8 font-display font-normal">
         {tab === "learn" && (
           <div className="space-y-8">
             {topic.interactive && (
@@ -128,9 +133,10 @@ export default function TopicView({ topic, prev, next }: Props) {
           <QuizPanel
             questions={topic.quiz}
             onComplete={(score, total) => {
-              if (score >= Math.ceil(total * 0.7)) {
+              if (quizPassed(score, total)) {
                 markTopicCompleted(topic.slug, score);
                 setCompleted(true);
+                void reportLesson({ kind: "academy", slug: topic.slug, done: true, quizScore: score });
               }
             }}
           />

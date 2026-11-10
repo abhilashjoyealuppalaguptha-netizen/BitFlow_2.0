@@ -20,8 +20,8 @@ const config: Config = {
         muted:   "#2e3040",   // disabled / inactive borders
 
         // Text
-        dim:     "#4a4d60",   // placeholder, line numbers
-        ghost:   "#7a7d96",   // secondary labels
+        dim:     "#80839d",   // placeholder, tertiary text (≥4.5:1 on every bg up to surface)
+        ghost:   "#9598ac",   // secondary labels (≥6:1)
         pale:    "#b0b3cc",   // body text
         bright:  "#e8eaf6",   // primary text / headings
 
@@ -41,6 +41,8 @@ const config: Config = {
 
       // ── Typography ───────────────────────────────────────────────────────
       fontFamily: {
+        // Blocky pixel lettering for the pixel UI (components/pixel)
+        pixel:   ["var(--font-pixel)", "monospace"],
         // Headings, branding, body copy — Inter, site-wide
         display: ["var(--font-display)", "sans-serif"],
         // Legacy class name used for big headings across pages — also Inter now

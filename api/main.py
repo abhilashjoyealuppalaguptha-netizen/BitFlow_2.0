@@ -23,12 +23,17 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 
 from api.config import settings
 from api.exceptions import VerilogSandboxError, sandbox_error_handler, unhandled_error_handler
+from api.routes.asic import router as asic_router
+from api.routes.hdl import formal_router, vhdl_router
 from api.routes.health import router as health_router
 from api.routes.simulate import router as simulate_router
+from api.routes.style import router as style_router
+from api.routes.synthesize import board_router, equivalence_router, fpga_router, metrics_router, router as synthesize_router
 from api.utils import configure_logging
 
 
@@ -59,7 +64,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Simulations run natively via iverilog/vvp subprocess — no Docker daemon needed.
     logger.info("Native simulation mode: using iverilog/vvp subprocess directly")
 
+    # Warm the tools in the background: the server answers requests at once, and the first real
+    # run no longer pays for a cold start (api/warmup.py; WARMUP=false turns it off).
+    warm_task = None
+    if settings.warmup:
+        import asyncio
+        from api.warmup import warm_up
+        warm_task = asyncio.create_task(warm_up())
+
     yield  # ← application runs here
+
+    if warm_task is not None and not warm_task.done():
+        warm_task.cancel()
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
     logger.info("Verilog Sandbox API shutting down")
@@ -102,6 +118,11 @@ def create_app() -> FastAPI:
         allow_headers     = ["*"],
     )
 
+    # ── Compression ──────────────────────────────────────────────────────────
+    # Waveforms travel as base64 VCD inside the JSON and compress several-fold.
+    # Level 4 keeps the CPU cost small on a fractional-CPU host.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=4)
+
     # ── Exception handlers ────────────────────────────────────────────────────
     # VerilogSandboxError and all its subclasses → structured JSON 4xx/5xx
     app.add_exception_handler(VerilogSandboxError, sandbox_error_handler)
@@ -111,6 +132,15 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health_router)    # GET /health, GET /status
     app.include_router(simulate_router)  # POST /simulate, POST /simulate/upload
+    app.include_router(synthesize_router)  # POST /synthesize
+    app.include_router(equivalence_router)  # POST /equivalence
+    app.include_router(metrics_router)  # POST /metrics
+    app.include_router(board_router)  # POST /board
+    app.include_router(style_router)  # POST /style/lint, POST /style/format
+    app.include_router(fpga_router)  # POST /fpga
+    app.include_router(vhdl_router)  # POST /vhdl
+    app.include_router(formal_router)  # POST /formal
+    app.include_router(asic_router)  # POST /asic
 
     # ── Root redirect ─────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)

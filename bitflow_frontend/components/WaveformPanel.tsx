@@ -53,10 +53,19 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import type { ParsedVcd, VcdSignal, VcdChange } from "@/lib/vcd-parser";
+import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
 import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
-import { downloadVcd } from "@/lib/api";
+import { downloadBlob, downloadVcd } from "@/lib/api";
+import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
+import { diffRuns, inScope, matchRanges, nextAnyChange, nextChange, nextMatch, parseQuery, scopesOf, signalFor, splitBus } from "@/lib/wave-nav";
+import { parseVcd } from "@/lib/vcd-parser";
+import { FROM_SIM_KEY, fromVcd, nsPerUnit } from "@/lib/studio/wave";
+import { type DecoderKind, type DecoderSpec, type Frame, PRIMARY, ROLES, autoBitTime, guessDecoder, runDecoder } from "@/lib/protocol-decode";
+import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
+import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
+import { REVEAL_LINE, type TraceStep } from "@/lib/trace";
+import PixelSprite from "@/components/pixel/PixelSprite";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout constants
@@ -64,9 +73,12 @@ import type { SimulateResponse } from "@/lib/types";
 
 const LABEL_W   = 136;   // px — fixed label column width (sticky left)
 const ROW_H     = 40;    // px — height per signal row (labels + SVG must match)
+const PLOT_H    = 3 * ROW_H;   // px — a bus drawn as a line plot
 const AXIS_H    = 26;    // px — time axis band above row 0
+const MARKER_COLOR = { a: "#ffb547", b: "#5ab0ff" } as const;   // pinned markers A / B
 const SIG_PAD   = 8;     // px — top/bottom inset for waveform within row
 const CROSS_W   = 5;     // px — half-width of bus transition chevrons
+const DENSE_PX  = 4;     // px — bus segments narrower than this merge into one shaded "busy" band
 const PAD_RIGHT = 32;    // px — breathing room after the last timestamp
 
 const MIN_ZOOM  = 0.15;  // 15% of fit-to-width — compact overview
@@ -78,8 +90,32 @@ const MAX_ZOOM  = 60;    // 60× fit-to-width — extreme close-up
 
 interface WaveformPanelProps {
   parsedVcd : ParsedVcd;
-  result    : SimulateResponse;
+  /** The run it came from — enables the VCD download button. */
+  result?   : SimulateResponse;
+  /** Time ranges to shade red (e.g. where "yours" differs from "expected"). */
+  highlights?: { from: number; to: number }[];
+  /** Keep hidden rows, order, radix and markers across re-runs (which remount the panel) under this key. */
+  viewKey?: string;
+  /** "Where is this driven?" on a signal: the page opens the line that assigns it (Sandbox). */
+  onReveal?: (name: string, scope: string) => void;
+  /** Put marker A at this time and scroll to it; a new object each time, so the same time can be sent twice. */
+  markAt?: { time: number };
 }
+
+interface SavedView {
+  hidden  : string[];
+  order   : string[];
+  radixMap: Record<string, Radix>;
+  markers : { a: number | null; b: number | null };
+  plotMap : Record<string, boolean>;
+  decoder?: DecoderSpec | null;
+}
+// ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
+const savedViews = new Map<string, SavedView>();
+// The last dump each page showed, so the next run can be compared with it.
+const lastRuns = new Map<string, ParsedVcd>();
+/** The view a page's waveform panel last showed (row order, hidden rows, radix, markers): for the lab report. */
+export const getSavedView = (viewKey: string): SavedView | undefined => savedViews.get(viewKey);
 
 /** Captured on every mouse-move; drives the label-column value badges. */
 interface HoverInfo {
@@ -91,73 +127,6 @@ interface HoverInfo {
 // Pure helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Binary-search `changes` for the last entry at or before `time`.
- * Returns null when `time` precedes the first recorded change.
- *
- * O(log n) per signal per mouse-move — negligible for realistic VCD sizes.
- */
-function getValueAtTime(changes: VcdChange[], time: number): string | null {
-  if (changes.length === 0) return null;
-  if (time < changes[0].time) return null;
-
-  let lo = 0;
-  let hi = changes.length - 1;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (changes[mid].time <= time) lo = mid;
-    else hi = mid - 1;
-  }
-  return changes[lo].value;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Radix types and formatting
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Display radix for a signal. Persisted per-signal in radixMap state. */
-export type Radix = "bin" | "dec" | "hex";
-
-/** Default radix by signal width: buses → hex, 1-bit → binary. */
-function defaultRadix(width: number): Radix {
-  return width > 1 ? "hex" : "bin";
-}
-
-/**
- * Format a raw VCD binary value string for display given a radix.
- *
- *   bin: show raw binary string   e.g. "0101"
- *   hex: show prefixed hex        e.g. "h5"  (or "x"/"z" for unknown)
- *   dec: show unsigned decimal    e.g. "5"   (or "x"/"z" for unknown)
- *
- * 1-bit signals: always display raw "0" | "1" | "x" | "z" — radix only
- * applies to buses (width > 1).
- */
-function formatWithRadix(value: string, width: number, radix: Radix): string {
-  // 1-bit: raw value is already the display value regardless of radix
-  if (width === 1) return value;
-
-  // Unknown / high-impedance
-  const isUnknown = /[xXzZ]/.test(value);
-  if (isUnknown) return /^[xX]+$/.test(value) ? "x" : /^[zZ]+$/.test(value) ? "z" : "X";
-
-  const n = parseInt(value, 2);
-  if (isNaN(n)) return "?";
-
-  switch (radix) {
-    case "bin": return value;
-    case "dec": return String(n);
-    case "hex": return `h${n.toString(16).toUpperCase()}`;
-  }
-}
-
-/** Cycle through radix values: bin → dec → hex → bin */
-function nextRadix(current: Radix): Radix {
-  return current === "bin" ? "dec" : current === "dec" ? "hex" : "bin";
-}
-
-/** Short label shown in the radix cycle button */
-const RADIX_LABEL: Record<Radix, string> = { bin: "b", dec: "d", hex: "h" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG waveform renderers
@@ -172,14 +141,14 @@ const RADIX_LABEL: Record<Radix, string> = { bin: "b", dec: "d", hex: "h" };
  */
 function render1bit(
   sig       : VcdSignal,
-  rowIndex  : number,
+  top       : number,         // y of the row's top edge
   pxPerUnit : number,
   chartW    : number,
 ): React.ReactElement {
   const xOf = (t: number) => t * pxPerUnit;
 
-  const yH = rowIndex * ROW_H + AXIS_H + SIG_PAD;           // y when HIGH
-  const yL = rowIndex * ROW_H + AXIS_H + ROW_H - SIG_PAD;   // y when LOW
+  const yH = top + SIG_PAD;           // y when HIGH
+  const yL = top + ROW_H - SIG_PAD;   // y when LOW
   const yX = (yH + yL) / 2;                                  // y when X/Z
 
   const toY = (v: string): number =>
@@ -197,15 +166,23 @@ function render1bit(
     );
   }
 
-  // Build the step-function path
+  // Build the step-function path. Changes that land in the same pixel column become one
+  // vertical stroke, so a clock over thousands of cycles stays a short path.
   const startY = changes[0].time === 0 ? toY(changes[0].value) : yX;
   let d = `M 0 ${startY}`;
+  let col = -1, lo = startY, hi = startY, last = startY;
+  const flush = () => { if (col >= 0) d += lo === hi ? ` H ${col} V ${last}` : ` H ${col} V ${lo} V ${hi} V ${last}`; };
 
   for (let j = 0; j < changes.length; j++) {
     const { time, value } = changes[j];
     if (j === 0 && time === 0) continue;   // already at correct y
-    d += ` H ${xOf(time)} V ${toY(value)}`;
+    const x = Math.round(xOf(time)), y = toY(value);
+    if (x !== col) { flush(); col = x; lo = hi = last; }   // the column starts at the previous level
+    if (y < lo) lo = y;
+    if (y > hi) hi = y;
+    last = y;
   }
+  flush();
   d += ` H ${chartW}`;
 
   return (
@@ -237,15 +214,15 @@ function render1bit(
  */
 function renderBus(
   sig       : VcdSignal,
-  rowIndex  : number,
+  top       : number,         // y of the row's top edge
   pxPerUnit : number,
   chartW    : number,
   radix     : Radix,          // ← NEW: controls segment label formatting
 ): React.ReactElement {
   const xOf = (t: number) => t * pxPerUnit;
 
-  const yH = rowIndex * ROW_H + AXIS_H + SIG_PAD;
-  const yL = rowIndex * ROW_H + AXIS_H + ROW_H - SIG_PAD;
+  const yH = top + SIG_PAD;
+  const yL = top + ROW_H - SIG_PAD;
   const yM = (yH + yL) / 2;
 
   if (sig.changes.length === 0) {
@@ -258,52 +235,107 @@ function renderBus(
     );
   }
 
-  const regions = sig.changes.map((change, idx) => ({
-    x1    : xOf(change.time),
-    x2    : idx + 1 < sig.changes.length ? xOf(sig.changes[idx + 1].time) : chartW,
-    value : change.value,
-  }));
+  // Segments narrower than DENSE_PX merge into a shaded "busy" band; the others are drawn as
+  // one path per colour, with labels only where they fit. Thousands of value changes stay a
+  // handful of SVG nodes (one <polygon> per change froze the page on long simulations).
+  let shapes = "", unknown = "", dense = "";
+  let runStart = -1, runEnd = -1;
+  const labels: React.ReactElement[] = [];
+  const flushRun = () => {
+    if (runStart >= 0) dense += ` M ${runStart} ${yH} H ${runEnd} V ${yL} H ${runStart} Z`;
+    runStart = -1;
+  };
+  const ch = sig.changes;
+  for (let idx = 0; idx < ch.length; idx++) {
+    const x1 = xOf(ch[idx].time);
+    const x2 = idx + 1 < ch.length ? xOf(ch[idx + 1].time) : chartW;
+    if (x2 - x1 < DENSE_PX) {
+      if (runStart < 0) runStart = x1;
+      runEnd = x2;
+      continue;
+    }
+    flushRun();
+    const label     = formatWithRadix(ch[idx].value, sig.width, radix);
+    const isUnknown = label === "x" || label === "z" || label === "X";
+    // First/last regions have flat ends; middle regions have chevrons
+    const lx = x1 === 0      ? 0      : x1 + CROSS_W;
+    const rx = x2 === chartW ? chartW : x2 - CROSS_W;
+    const poly = ` M ${x1} ${yM} L ${lx} ${yH} L ${rx} ${yH} L ${x2} ${yM} L ${rx} ${yL} L ${lx} ${yL} Z`;
+    if (isUnknown) unknown += poly; else shapes += poly;
+    const w = rx - lx;
+    if (w > 16) {
+      labels.push(
+        <text
+          key={idx}
+          x={(lx + rx) / 2} y={yM + 4}
+          textAnchor="middle"
+          fontSize={w > 32 ? 10 : 8}
+          fill={isUnknown ? "#4a4d60" : "#4db8ff"}
+          fontFamily="monospace"
+          style={{ userSelect: "none" }}
+        >
+          {label}
+        </text>,
+      );
+    }
+  }
+  flushRun();
 
   return (
     <g key={sig.id}>
-      {regions.map((reg, idx) => {
-        const { x1, x2, value } = reg;
-        // ← FIX: use formatWithRadix instead of hardcoded binToHex
-        const label     = formatWithRadix(value, sig.width, radix);
-        const isUnknown = label === "x" || label === "z" || label === "X";
+      {dense   && <path d={dense}   fill="rgba(77,184,255,0.28)" stroke="#4db8ff" strokeWidth={1} />}
+      {shapes  && <path d={shapes}  fill="rgba(77,184,255,0.08)" stroke="#4db8ff" strokeWidth={1} />}
+      {unknown && <path d={unknown} fill="rgba(74,77,96,0.15)"   stroke="#4a4d60" strokeWidth={1} />}
+      {labels}
+    </g>
+  );
+}
 
-        // First/last regions have flat ends; middle regions have chevrons
-        const lx = x1 === 0     ? 0      : x1 + CROSS_W;
-        const rx = x2 === chartW ? chartW : x2 - CROSS_W;
+/**
+ * Bus as a line plot (a PLOT_H row): a step line from the signal's minimum
+ * (bottom) to its maximum (top), both labelled at the left. x/z leave a gap.
+ */
+function renderLine(
+  sig       : VcdSignal,
+  top       : number,
+  pxPerUnit : number,
+  chartW    : number,
+  signed    : boolean,
+): React.ReactElement {
+  const { points, min, max } = series(sig, signed);
+  const yTop = top + SIG_PAD + 6;
+  const yBot = top + PLOT_H - SIG_PAD;
+  const yOf  = (v: number) => (max === min ? (yTop + yBot) / 2 : yBot - ((v - min) / (max - min)) * (yBot - yTop));
 
-        const pts = [
-          `${x1},${yM}`, `${lx},${yH}`, `${rx},${yH}`,
-          `${x2},${yM}`, `${rx},${yL}`, `${lx},${yL}`,
-        ].join(" ");
+  // Points in the same pixel column become one vertical span (min to max), so the path stays
+  // short however many changes there are; x/z values leave a gap.
+  let d = "", penDown = false;
+  for (let i = 0; i < points.length;) {
+    const x = Math.round(points[i].t * pxPerUnit);
+    let j = i, lo = Infinity, hi = -Infinity;
+    for (; j < points.length && Math.round(points[j].t * pxPerUnit) === x; j++) {
+      const v = points[j].v;
+      if (v !== null) { const y = yOf(v); if (y < lo) lo = y; if (y > hi) hi = y; }
+    }
+    const lastV = points[j - 1].v;
+    const x2 = j < points.length ? points[j].t * pxPerUnit : chartW;
+    if (lo <= hi) {
+      d += penDown ? ` V ${lo} V ${hi}` : ` M ${x} ${lo} V ${hi}`;
+      if (lastV !== null) { d += ` V ${yOf(lastV)} H ${x2}`; penDown = true; } else penDown = false;
+    } else penDown = false;
+    i = j;
+  }
 
-        const fill   = isUnknown ? "rgba(74,77,96,0.15)"  : "rgba(77,184,255,0.08)";
-        const stroke = isUnknown ? "#4a4d60"               : "#4db8ff";
-        const color  = isUnknown ? "#4a4d60"               : "#4db8ff";
-        const w      = rx - lx;
-
-        return (
-          <g key={idx}>
-            <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={1} />
-            {w > 16 && (
-              <text
-                x={(lx + rx) / 2} y={yM + 4}
-                textAnchor="middle"
-                fontSize={w > 32 ? 10 : 8}
-                fill={color}
-                fontFamily="monospace"
-                style={{ userSelect: "none" }}
-              >
-                {label}
-              </text>
-            )}
-          </g>
-        );
-      })}
+  const label = (y: number, v: number) => (
+    <text x={4} y={y} fontSize={9} fill="#4a4d60" fontFamily="monospace" style={{ userSelect: "none" }}>{v}</text>
+  );
+  return (
+    <g key={sig.id}>
+      <line x1={0} x2={chartW} y1={yTop} y2={yTop} stroke="#1f2130" strokeDasharray="2 4" />
+      <line x1={0} x2={chartW} y1={yBot} y2={yBot} stroke="#1f2130" strokeDasharray="2 4" />
+      {d && <path d={d} stroke="#4db8ff" fill="none" strokeWidth={1.5} strokeLinejoin="round" />}
+      {label(yTop - 2, max)}
+      {min !== max && label(yBot - 3, min)}
     </g>
   );
 }
@@ -312,11 +344,168 @@ function renderBus(
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Two buses against each other (values at every change of either), e.g. I/Q or a DAC sweep. */
+function XyPlot({ buses, signedOf, onClose }: {
+  buses   : VcdSignal[];
+  signedOf: (s: VcdSignal) => boolean;
+  onClose : () => void;
+}) {
+  const [xi, setXi] = useState(0);
+  const [yi, setYi] = useState(Math.min(1, buses.length - 1));
+  const x = buses[xi], y = buses[yi];
+  const pts = useMemo(() => (x && y ? xyPoints(x, y, signedOf(x), signedOf(y)) : []), [x, y, signedOf]);
+
+  const W = 300, H = 210, P = 30;
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const sx = (v: number) => (x1 === x0 ? W / 2 : P + ((v - x0) / (x1 - x0)) * (W - P - 10));
+  const sy = (v: number) => (y1 === y0 ? H / 2 : H - P - ((v - y0) / (y1 - y0)) * (H - P - 10));
+  const pick = (value: number, set: (n: number) => void, label: string) => (
+    <label className="flex items-center gap-1">
+      <span className="text-dim">{label}</span>
+      <select value={value} onChange={(e) => set(Number(e.target.value))}
+              className="bg-pit border border-rim/60 rounded px-1 text-pale max-w-[110px]">
+        {buses.map((b, i) => <option key={b.id} value={i}>{b.name}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <div className="absolute top-2 right-2 z-20 bg-surface border border-rim rounded-lg shadow-xl p-2 font-mono text-[10px] space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-ghost uppercase tracking-wider">X–Y plot</span>
+        {buses.length >= 2 && pick(xi, setXi, "x")}
+        {buses.length >= 2 && pick(yi, setYi, "y")}
+        <button onClick={onClose} aria-label="Close X–Y plot" className="ml-auto text-dim hover:text-ghost px-1">×</button>
+      </div>
+      {buses.length < 2 ? (
+        <p className="text-dim w-[300px]">Needs two buses (signals wider than 1 bit) in the waveform.</p>
+      ) : pts.length === 0 ? (
+        <p className="text-dim w-[300px]">No time where both have a known value.</p>
+      ) : (
+        <svg width={W} height={H} className="block bg-pit rounded">
+          <line x1={P} y1={H - P} x2={W - 6} y2={H - P} stroke="#2e3040" />
+          <line x1={P} y1={6} x2={P} y2={H - P} stroke="#2e3040" />
+          <polyline points={pts.map(([a, c]) => `${sx(a)},${sy(c)}`).join(" ")} fill="none" stroke="#4db8ff" strokeOpacity={0.35} />
+          {pts.map(([a, c], i) => <circle key={i} cx={sx(a)} cy={sy(c)} r={2} fill="#4db8ff" />)}
+          <text x={P} y={H - P + 12} fontSize={9} fill="#4a4d60">{x0}</text>
+          <text x={W - 6} y={H - P + 12} fontSize={9} fill="#4a4d60" textAnchor="end">{x1}</text>
+          <text x={P - 3} y={H - P} fontSize={9} fill="#4a4d60" textAnchor="end">{y0}</text>
+          <text x={P - 3} y={14} fontSize={9} fill="#4a4d60" textAnchor="end">{y1}</text>
+          <text x={(W + P) / 2} y={H - 4} fontSize={9} fill="#8b8fa3" textAnchor="middle">{x.name}</text>
+          <text x={10} y={(H - P) / 2} fontSize={9} fill="#8b8fa3" textAnchor="middle" transform={`rotate(-90 10 ${(H - P) / 2})`}>{y.name}</text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
+const FRAME_COLOR: Record<Frame["kind"], string> = { data: "#4db8ff", start: "#ffb020", stop: "#ffb020", error: "#ff4f4f" };
+
+/** "Decode": pick UART / SPI / I2C, map 1-bit signals to its roles, list the frames (click one to jump to it). */
+function DecodePanel({ spec, setSpec, oneBit, frames, autoBit, onJump, onClose }: {
+  spec    : DecoderSpec | null;
+  setSpec : (d: DecoderSpec | null) => void;
+  /** row keys of the 1-bit signals */
+  oneBit  : string[];
+  frames  : Frame[] | string | null;
+  autoBit : number | null;
+  onJump  : (f: Frame) => void;
+  onClose : () => void;
+}) {
+  const input = "bg-pit border border-rim/60 rounded px-1 text-pale";
+  const set = (patch: Partial<DecoderSpec>) => spec && setSpec({ ...spec, ...patch });
+  const list = Array.isArray(frames) ? frames : [];
+  const errors = list.filter((f) => f.error).length;
+  return (
+    <div className="absolute top-2 right-2 z-20 w-[320px] bg-surface border border-rim rounded-lg shadow-xl p-2 font-mono text-[10px] space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-ghost uppercase tracking-wider">Decode</span>
+        <select aria-label="Protocol" value={spec?.kind ?? ""} className={input}
+                onChange={(e) => setSpec(e.target.value ? guessDecoder(e.target.value as DecoderKind, oneBit) : null)}>
+          <option value="">off</option>
+          <option value="uart">UART</option>
+          <option value="spi">SPI</option>
+          <option value="i2c">I2C</option>
+        </select>
+        <button onClick={onClose} aria-label="Close decoder" className="ml-auto text-dim hover:text-ghost px-1">×</button>
+      </div>
+      {oneBit.length === 0 && <p className="text-dim">Needs 1-bit signals in the waveform.</p>}
+      {spec && (
+        <>
+          <div className="grid grid-cols-2 gap-1">
+            {ROLES[spec.kind].map((r) => (
+              <label key={r.role} className="flex items-center gap-1">
+                <span className="text-dim w-12 shrink-0">{r.label.split(" ")[0]}</span>
+                <select aria-label={r.label} value={spec.signals[r.role] ?? ""} className={`${input} min-w-0 flex-1`}
+                        onChange={(e) => set({ signals: { ...spec.signals, [r.role]: e.target.value } })}>
+                  <option value="">{r.optional ? "none" : "choose…"}</option>
+                  {oneBit.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+          {spec.kind === "uart" && spec.uart && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1"><span className="text-dim">bit time</span>
+                <input type="number" min={0} value={spec.uart.bitTime || ""} placeholder={autoBit ? `auto ${autoBit}` : "auto"}
+                       onChange={(e) => set({ uart: { ...spec.uart!, bitTime: Math.max(0, Number(e.target.value) || 0) } })}
+                       className={`${input} w-20`} /></label>
+              <label className="flex items-center gap-1"><span className="text-dim">bits</span>
+                <select value={spec.uart.dataBits} className={input} onChange={(e) => set({ uart: { ...spec.uart!, dataBits: Number(e.target.value) } })}>
+                  {[5, 6, 7, 8, 9].map((n) => <option key={n}>{n}</option>)}
+                </select></label>
+              <label className="flex items-center gap-1"><span className="text-dim">parity</span>
+                <select value={spec.uart.parity} className={input}
+                        onChange={(e) => set({ uart: { ...spec.uart!, parity: e.target.value as "none" | "even" | "odd" } })}>
+                  <option>none</option><option>even</option><option>odd</option>
+                </select></label>
+            </div>
+          )}
+          {spec.kind === "spi" && spec.spi && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1"><span className="text-dim">mode</span>
+                <select value={spec.spi.cpol * 2 + spec.spi.cpha} className={input}
+                        onChange={(e) => { const m = Number(e.target.value); set({ spi: { ...spec.spi!, cpol: (m >> 1) as 0 | 1, cpha: (m & 1) as 0 | 1 } }); }}>
+                  {[0, 1, 2, 3].map((m) => <option key={m} value={m}>{m} (CPOL {m >> 1}, CPHA {m & 1})</option>)}
+                </select></label>
+              <label className="flex items-center gap-1"><span className="text-dim">bits</span>
+                <input type="number" min={1} max={16} value={spec.spi.bits} className={`${input} w-12`}
+                       onChange={(e) => set({ spi: { ...spec.spi!, bits: Math.min(16, Math.max(1, Number(e.target.value) || 8)) } })} /></label>
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={spec.spi.msbFirst} onChange={(e) => set({ spi: { ...spec.spi!, msbFirst: e.target.checked } })} />
+                <span className="text-dim">MSB first</span></label>
+            </div>
+          )}
+          {typeof frames === "string" ? <p className="text-amber-400">{frames}</p> : (
+            <>
+              <div className="text-dim">{list.length} frame{list.length === 1 ? "" : "s"}{errors ? ` · ${errors} with errors` : ""}</div>
+              {list.length > 0 && (
+                <ul className="max-h-40 overflow-auto border border-rim/40 rounded">
+                  {list.slice(0, 500).map((f, i) => (
+                    <li key={i}>
+                      <button onClick={() => onJump(f)} title={f.error ?? "Jump to this frame"}
+                              className="w-full flex gap-2 px-1.5 py-0.5 text-left hover:bg-rim/40">
+                        <span className="text-dim w-14 shrink-0 text-right">{+f.start.toFixed(2)}</span>
+                        <span style={{ color: FRAME_COLOR[f.kind] }}>{f.label}{f.error ? ` — ${f.error}` : ""}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
     <div className="flex flex-1 items-center justify-center text-[12px] font-mono text-dim">
       <div className="text-center space-y-1">
-        <div className="text-2xl text-dim/40">∿</div>
+        <PixelSprite anim="think" size={48} className="mx-auto" />
         <div>No signals found in waveform.</div>
         <div className="text-[11px]">
           Make sure your testbench calls{" "}
@@ -337,8 +526,25 @@ interface SignalLabelProps {
   sig          : VcdSignal;
   hoverValue   : string | undefined;   // undefined = no cursor; string = live value
   radix        : Radix;
-  onRadixChange: (id: string, radix: Radix) => void;
+  onRadixChange: (key: string, radix: Radix) => void;
   dimmed       : boolean;              // true when search active and signal doesn't match
+  /** Row key: the name, plus "#n" for a repeated name (see WaveformPanel). */
+  rowKey       : string;
+  onHide       : (key: string) => void;
+  /** Drag a label onto another to move it there. */
+  onMove       : (from: string, to: string) => void;
+  /** Bus drawn as a line plot (a taller row). */
+  plotted      : boolean;
+  onPlotToggle : (key: string) => void;
+  /** Bus shown with one row per bit below it. */
+  expanded     : boolean;
+  onExpandToggle: (sig: VcdSignal) => void;
+  /** The row [ and ] step through (edges of this signal). */
+  selected     : boolean;
+  onSelect     : (key: string) => void;
+  /** Different from the previous run somewhere. */
+  differs      : boolean;
+  onReveal?    : (sig: VcdSignal) => void;
 }
 
 const SignalLabel = React.memo(function SignalLabel({
@@ -347,6 +553,17 @@ const SignalLabel = React.memo(function SignalLabel({
   radix,
   onRadixChange,
   dimmed,
+  rowKey,
+  onHide,
+  onMove,
+  plotted,
+  onPlotToggle,
+  expanded,
+  onExpandToggle,
+  selected,
+  onSelect,
+  differs,
+  onReveal,
 }: SignalLabelProps) {
   const isBus = sig.width > 1;
   const display = hoverValue !== undefined
@@ -367,23 +584,63 @@ const SignalLabel = React.memo(function SignalLabel({
 
   return (
     <div
-      className="flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100"
-      style={{ height: ROW_H, opacity: dimmed ? 0.25 : 1 }}
+      className={`group flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100 cursor-grab ${selected ? "bg-phosphor/10 shadow-[inset_2px_0_0_#00e87a]" : ""}`}
+      style={{ height: plotted ? PLOT_H : ROW_H, opacity: dimmed ? 0.25 : 1 }}
+      draggable
+      title="Drag to reorder"
+      onDragStart={(e) => { e.dataTransfer.setData("text/x-bitflow-signal", rowKey); e.dataTransfer.effectAllowed = "move"; }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("text/x-bitflow-signal")) e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData("text/x-bitflow-signal"); if (from && from !== rowKey) onMove(from, rowKey); }}
     >
       {/* Signal name — truncated with tooltip for long names */}
       <span
-        className="font-mono text-[11px] text-pale truncate flex-1 min-w-0 mr-1"
-        title={sig.name}
+        className={`font-mono text-[11px] truncate flex-1 min-w-0 mr-1 cursor-pointer ${differs ? "text-danger" : "text-pale"}`}
+        title={`${sig.scope ? sig.scope + "." : ""}${sig.name}${differs ? " (differs from the previous run)" : ""}: click to select, then [ and ] step through its edges`}
+        onClick={() => onSelect(rowKey)}
       >
-        {sig.name}
+        {differs && "≠ "}{sig.name}
       </span>
 
       {/* Right side: radix button + width badge + live value badge */}
       <div className="flex items-center gap-1 shrink-0">
-        {/* Radix cycle button — only for buses */}
+        {/* Plot toggle and radix cycle button — only for buses */}
+        {onReveal && (
+          <button
+            onClick={() => onReveal(sig)}
+            title={`Where is ${sig.name} driven? Opens the line in the editor`}
+            aria-label={`Show where ${sig.name} is driven`}
+            className="font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center text-dim hover:text-phosphor hover:bg-phosphor/10 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          >
+            ↗
+          </button>
+        )}
         {isBus && (
           <button
-            onClick={() => onRadixChange(sig.id, nextRadix(radix))}
+            onClick={() => onExpandToggle(sig)}
+            title={expanded ? "Collapse the bits" : "Show each bit as its own row"}
+            aria-label={expanded ? `Collapse ${sig.name}` : `Expand ${sig.name} into bits`}
+            aria-pressed={expanded}
+            className={`font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center transition-colors duration-100 ${
+              expanded ? "text-info bg-info/10" : "text-dim hover:text-info hover:bg-info/10"}`}
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        )}
+        {isBus && (
+          <button
+            onClick={() => onPlotToggle(rowKey)}
+            title={plotted ? "Show as values" : "Plot as a line (signed when the radix is ±)"}
+            aria-label={plotted ? `Show ${sig.name} as values` : `Plot ${sig.name} as a line`}
+            aria-pressed={plotted}
+            className={`font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center transition-colors duration-100 ${
+              plotted ? "text-info bg-info/10" : "text-dim hover:text-info hover:bg-info/10"}`}
+          >
+            ∿
+          </button>
+        )}
+        {isBus && (
+          <button
+            onClick={() => onRadixChange(rowKey, nextRadix(radix))}
             title={`Switch display radix (current: ${radix})`}
             className={[
               "font-mono text-[8px] w-4 h-4 rounded",
@@ -405,6 +662,15 @@ const SignalLabel = React.memo(function SignalLabel({
             {display}
           </span>
         )}
+
+        <button
+          onClick={() => onHide(rowKey)}
+          title={`Hide ${sig.name}`}
+          aria-label={`Hide signal ${sig.name}`}
+          className="font-mono text-[10px] w-3 text-dim hover:text-danger opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        >
+          ×
+        </button>
       </div>
     </div>
   );
@@ -414,8 +680,43 @@ const SignalLabel = React.memo(function SignalLabel({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps) {
-  const { signals, maxTime, timescale } = parsedVcd;
+export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, onReveal, markAt }: WaveformPanelProps) {
+  const saved = viewKey ? savedViews.get(viewKey) : undefined;
+
+  // ── Debugging: an opened VCD file, the previous run, the scope shown, buses expanded into bits ──
+  const [imported, setImported] = useState<{ name: string; vcd: ParsedVcd } | null>(null);
+  const [prevRun, setPrevRun] = useState<ParsedVcd | null>(null);
+  const [compareOn, setCompareOn] = useState(false);
+  useEffect(() => {
+    if (!viewKey) return;
+    const last = lastRuns.get(viewKey);
+    if (last && last !== parsedVcd) setPrevRun(last);
+    lastRuns.set(viewKey, parsedVcd);
+  }, [viewKey, parsedVcd]);
+  const vcd = imported?.vcd ?? parsedVcd;
+  const [scopeSel, setScopeSel] = useState<string | null>(null);
+  const [expandMap, setExpandMap] = useState<Record<string, boolean>>({});
+  const scopes = useMemo(() => scopesOf(vcd.signals), [vcd]);
+  const sigKey = (sg: VcdSignal) => `${sg.scope ?? ""}.${sg.name}`;
+  const signals = useMemo<VcdSignal[]>(
+    () => inScope(vcd.signals, scopeSel).flatMap((sg) => (sg.width > 1 && expandMap[sigKey(sg)] ? [sg, ...splitBus(sg)] : [sg])),
+    [vcd, scopeSel, expandMap],
+  );
+  const { maxTime, timescale } = vcd;
+  const handleExpand = useCallback((sg: VcdSignal) => setExpandMap((m) => ({ ...m, [sigKey(sg)]: !m[sigKey(sg)] })), []);
+  const diff = useMemo(() => (compareOn && prevRun && !imported ? diffRuns(vcd, prevRun) : null), [compareOn, prevRun, imported, vcd]);
+  const differing = useMemo(() => new Set(diff?.signals ?? []), [diff]);
+  const shaded = diff ? [...(highlights ?? []), ...diff.ranges] : highlights;
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [findText, setFindText] = useState("");
+  const openVcd = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 32 * 1024 * 1024) { window.alert("That file is over 32 MB: dump fewer signals or a shorter time."); return; }
+    const parsed = parseVcd(await file.text());
+    if (!parsed.signals.length) { window.alert(`${file.name} has no signals: is it a VCD file?`); return; }
+    setImported({ name: file.name, vcd: parsed });
+    setScopeSel(null);
+  }, []);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
 
@@ -506,6 +807,26 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
   }, [searchQuery, signals]);
 
   /**
+   * hidden / order: row keys — the signal name, plus "#n" for its n-th repeat
+   * (a testbench and its DUT can both have "count"). Unlike VCD id codes these
+   * survive a re-run. Hidden rows are left out; dragged rows follow `order`,
+   * and signals not in it keep their VCD order after the ordered ones.
+   */
+  const [hidden, setHidden] = useState<string[]>(saved?.hidden ?? []);
+  const [order,  setOrder]  = useState<string[]>(saved?.order ?? []);
+
+  const rowKey = useMemo(() => rowKeys(signals), [signals]);
+  const visibleSignals = useMemo<VcdSignal[]>(() => visibleRows(signals, hidden, order, rowKey), [signals, hidden, order, rowKey]);
+
+  const hiddenCount = signals.filter((s) => hidden.includes(rowKey.get(s.id)!)).length;
+  const handleHide  = useCallback((key: string) => setHidden((h) => [...h, key]), []);
+  const handleMove  = useCallback((from: string, to: string) => {
+    const names = visibleSignals.map((s) => rowKey.get(s.id)!).filter((n) => n !== from);
+    names.splice(names.indexOf(to), 0, from);
+    setOrder(names);
+  }, [visibleSignals, rowKey]);
+
+  /**
    * displaySignals: the ordered list of signals actually rendered.
    *
    * When search is active (dimmedIds is non-empty):
@@ -520,32 +841,54 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
    * is never mutated.
    */
   const displaySignals = useMemo<VcdSignal[]>(() => {
-    if (dimmedIds.size === 0) return signals;          // no query → original order
-    const matched  = signals.filter((s) => !dimmedIds.has(s.id));
-    const unmatched = signals.filter((s) =>  dimmedIds.has(s.id));
+    if (dimmedIds.size === 0) return visibleSignals;   // no query → current order
+    const matched  = visibleSignals.filter((s) => !dimmedIds.has(s.id));
+    const unmatched = visibleSignals.filter((s) =>  dimmedIds.has(s.id));
     return [...matched, ...unmatched];
-  }, [signals, dimmedIds]);
+  }, [visibleSignals, dimmedIds]);
 
   // ── Radix state ────────────────────────────────────────────────────────────
 
   /**
-   * radixMap: per-signal display radix, keyed by signal ID.
+   * radixMap: per-signal display radix, keyed by row key (see hidden / order).
    * Missing entry → defaultRadix(sig.width).
    * Only buses (width > 1) use dec/hex; 1-bit signals always show "0"/"1".
    *
    * Deliberately separate from waveformElements memo — radix only affects
    * the label column (SignalLabel), not the SVG path geometry.
    */
-  const [radixMap,       setRadixMap]       = useState<Record<string, Radix>>({});
+  const [radixMap,       setRadixMap]       = useState<Record<string, Radix>>(saved?.radixMap ?? {});
 
   /**
    * handleRadixChange: stable callback passed to each SignalLabel.
    * Only updates the single entry for the changed signal — all other
    * SignalLabel instances are unaffected (React.memo guards them).
    */
-  const handleRadixChange = useCallback((id: string, radix: Radix) => {
-    setRadixMap((prev) => ({ ...prev, [id]: radix }));
+  const handleRadixChange = useCallback((key: string, radix: Radix) => {
+    setRadixMap((prev) => ({ ...prev, [key]: radix }));
   }, []);
+
+  /** plotMap: buses drawn as a line plot (PLOT_H rows), keyed by row key. */
+  const [plotMap, setPlotMap] = useState<Record<string, boolean>>(saved?.plotMap ?? {});
+  const handlePlotToggle = useCallback((key: string) => setPlotMap((p) => ({ ...p, [key]: !p[key] })), []);
+  const isSigned = useCallback(
+    (s: VcdSignal) => (radixMap[rowKey.get(s.id)!] ?? defaultRadix(s.width)) === "sdec",
+    [radixMap, rowKey],
+  );
+
+  /** rowTops[i]: y of row i's top edge in the SVG; the last entry is the bottom of the last row. */
+  const rowTops = useMemo(() => {
+    const tops = [AXIS_H];
+    for (const s of displaySignals) tops.push(tops[tops.length - 1] + (s.width > 1 && plotMap[rowKey.get(s.id)!] ? PLOT_H : ROW_H));
+    return tops;
+  }, [displaySignals, plotMap, rowKey]);
+  const [xyOpen, setXyOpen] = useState(false);
+  const [decodeOpen, setDecodeOpen] = useState(false);
+  const [decoder, setDecoder] = useState<DecoderSpec | null>(saved?.decoder ?? null);
+  const byKey = useMemo(() => new Map(signals.map((s) => [rowKey.get(s.id)!, s])), [signals, rowKey]);
+  const oneBitKeys = useMemo(() => signals.filter((s) => s.width === 1).map((s) => rowKey.get(s.id)!), [signals, rowKey]);
+  const frames = useMemo(() => (decoder ? runDecoder(decoder, (k) => byKey.get(k)) : null), [decoder, byKey]);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // ── Derived geometry ──────────────────────────────────────────────────────
 
@@ -560,7 +903,7 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
 
   const pxPerUnit = basePxPerUnit * zoom;
   const chartW    = Math.max(maxTime * pxPerUnit + PAD_RIGHT, containerWidth);
-  const svgH      = AXIS_H + displaySignals.length * ROW_H;
+  const svgH      = rowTops[rowTops.length - 1];
 
   // Keep all shadowed refs current after every render
   useEffect(() => { zoomRef.current      = zoom;         }, [zoom]);
@@ -712,6 +1055,51 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
     setHoverInfo(null);
   }, []);
 
+  // ── Pinned markers: click sets A, shift-click sets B ──────────────────────
+
+  const [markers, setMarkers] = useState<SavedView["markers"]>(saved?.markers ?? { a: null, b: null });
+
+  useEffect(() => {
+    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers, plotMap, decoder });
+  }, [viewKey, hidden, order, radixMap, markers, plotMap, decoder]);
+
+  /** Put marker A at t and scroll it into view. */
+  const goTo = useCallback((t: number | null) => {
+    if (t === null) return;
+    setMarkers((m) => ({ ...m, a: t }));
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, t * pxPerUnitRef.current - el.clientWidth / 3);
+  }, []);
+  useEffect(() => { if (markAt) goTo(markAt.time); }, [markAt, goTo]);
+  const query = useMemo(() => (findText.trim() ? parseQuery(findText) : null), [findText]);
+  const findSig = query && typeof query !== "string" ? signalFor(signals, query.name) : undefined;
+  const findRanges = useMemo(() => (query && typeof query !== "string" && findSig ? matchRanges(findSig, query, maxTime) : []), [query, findSig, maxTime]);
+  const findError = !query ? null : typeof query === "string" ? query : !findSig ? `No signal called ${query.name}` : findRanges.length ? null : "No match";
+  const findStep = (dir: 1 | -1) => goTo(nextMatch(findRanges, markers.a ?? (dir === 1 ? -1 : maxTime + 1), dir));
+  const edgeStep = (dir: 1 | -1) => {
+    const t = markers.a ?? (dir === 1 ? -1 : maxTime + 1);
+    const sel = selectedKey ? byKey.get(selectedKey) : undefined;
+    goTo(sel ? nextChange(sel, t, dir) : nextAnyChange(visibleSignals, t, dir));
+  };
+  const jumpTo = useCallback((f: Frame) => {
+    setMarkers((m) => ({ ...m, a: Math.round(f.start) }));
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, f.start * pxPerUnitRef.current - el.clientWidth / 3);
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el  = scrollRef.current;
+    const ppu = pxPerUnitRef.current;
+    if (!el || ppu <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const t    = Math.round(Math.max(0, Math.min(maxTimeRef.current, (e.clientX - rect.left + el.scrollLeft) / ppu)));
+    setMarkers((m) => (e.shiftKey ? { ...m, b: t } : { ...m, a: t }));
+  }, []);
+
+  /** "40ns" when the timescale is 1<unit>, else "40 × 10ps". */
+  const unit  = /^1\s*([a-z]+)$/i.exec(timescale.trim())?.[1];
+  const fmtDt = (dt: number) => (unit ? `${dt}${unit}` : `${dt} × ${timescale}`);
+
   // ── Memoised SVG geometry ─────────────────────────────────────────────────
 
   /**
@@ -726,12 +1114,14 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
   const waveformElements = useMemo(
     () =>
       displaySignals.map((sig, ri) => {
-        const radix = radixMap[sig.id] ?? defaultRadix(sig.width);
-        return sig.width === 1
-          ? render1bit(sig, ri, pxPerUnit, chartW)
-          : renderBus(sig, ri, pxPerUnit, chartW, radix);
+        const key   = rowKey.get(sig.id)!;
+        const radix = radixMap[key] ?? defaultRadix(sig.width);
+        if (sig.width === 1) return render1bit(sig, rowTops[ri], pxPerUnit, chartW);
+        return plotMap[key]
+          ? renderLine(sig, rowTops[ri], pxPerUnit, chartW, radix === "sdec")
+          : renderBus(sig, rowTops[ri], pxPerUnit, chartW, radix);
       }),
-    [displaySignals, pxPerUnit, chartW, radixMap],
+    [displaySignals, pxPerUnit, chartW, radixMap, rowKey, rowTops, plotMap],
   );
 
   /**
@@ -754,6 +1144,30 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
     [waveformElements, dimmedIds, displaySignals],
   );
 
+  const decodeOverlay = useMemo(() => {
+    if (!decoder || !Array.isArray(frames)) return null;
+    const key = decoder.signals[PRIMARY[decoder.kind]] || Object.values(decoder.signals).find(Boolean);
+    const ri = displaySignals.findIndex((sg) => rowKey.get(sg.id) === key);
+    if (ri < 0) return null;
+    const y0 = rowTops[ri], h = rowTops[ri + 1] - y0;
+    return (
+      <g pointerEvents="none" fontFamily="monospace" fontSize={9}>
+        {frames.map((f, i) => {
+          const x = f.start * pxPerUnit, w = Math.max(2, (f.end - f.start) * pxPerUnit), c = FRAME_COLOR[f.kind];
+          const fit = Math.floor((w - 6) / 5.5);
+          return (
+            <g key={i}>
+              <rect x={x} y={y0 + 3} width={w} height={h - 6} rx={2} fill={c} fillOpacity={0.12} stroke={c} strokeOpacity={0.55} />
+              {f.kind === "start" || f.kind === "stop"
+                ? <text x={x + 3} y={y0 + 11} fill={c}>{f.label}</text>
+                : fit >= 2 && <text x={x + w / 2} y={y0 + h / 2 + 3} fill={c} textAnchor="middle">{f.label.length > fit ? `${f.label.slice(0, fit - 1)}…` : f.label}</text>}
+            </g>
+          );
+        })}
+      </g>
+    );
+  }, [decoder, frames, displaySignals, rowKey, rowTops, pxPerUnit]);
+
   /**
    * Grid infrastructure: tick lines, tick labels, row dividers.
    * Same dependency set as waveforms.
@@ -762,7 +1176,7 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
     const xOf  = (t: number) => t * pxPerUnit;
     const step = niceTimeStep(maxTime);
     const ticks: number[] = [];
-    for (let t = 0; t <= maxTime; t += step) ticks.push(t);
+    for (let i = 0; i * step <= maxTime; i++) ticks.push(Number((i * step).toPrecision(12)));
 
     const tickLines = ticks.map((t) => (
       <line
@@ -794,18 +1208,48 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
     const rowDividers = displaySignals.map((_, ri) => (
       <line
         key={`rd-${ri}`}
-        x1={0}      y1={AXIS_H + (ri + 1) * ROW_H}
-        x2={chartW} y2={AXIS_H + (ri + 1) * ROW_H}
+        x1={0}      y1={rowTops[ri + 1]}
+        x2={chartW} y2={rowTops[ri + 1]}
         stroke="#1a1b22" strokeWidth={1}
       />
     ));
 
     return { tickLines, tickLabels, rowDividers };
-  }, [displaySignals, pxPerUnit, chartW, svgH, maxTime]);
+  }, [displaySignals, pxPerUnit, chartW, svgH, maxTime, rowTops]);
 
   // ── Misc derived values ───────────────────────────────────────────────────
 
-  const hasVcd      = result.waveform.available && result.waveform.vcd_base64;
+  const hasVcd      = result?.waveform.available && result.waveform.vcd_base64;
+
+  /** The chart as a standalone SVG, with the signal names drawn in a left column. */
+  const exportSvg = () => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const esc   = (t: string) => t.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    const ser   = new XMLSerializer();
+    const names = displaySignals.map((sg, i) =>
+      `<text x="8" y="${(rowTops[i] + rowTops[i + 1]) / 2 + 4}" font-family="monospace" font-size="11" fill="#c8cad6">${esc(sg.name)}</text>`).join("");
+    const w = LABEL_W + chartW;
+    downloadBlob("wave.svg",
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}">` +
+      `<rect width="${w}" height="${svgH}" fill="#0d0e11"/>${names}` +
+      `<g transform="translate(${LABEL_W},0)">${Array.from(svg.childNodes, (n) => ser.serializeToString(n)).join("")}</g></svg>`,
+      "image/svg+xml");
+  };
+
+  /** Visible signals as CSV: one row per change time, values in each row's current radix. */
+  const exportCsv = () => downloadBlob("wave.csv", toCsv(displaySignals.map((sg) => {
+    const r = radixMap[rowKey.get(sg.id)!] ?? defaultRadix(sg.width);
+    return { name: sg.name, changes: sg.changes, fmt: (v: string) => formatWithRadix(v, sg.width, r) };
+  })), "text/csv");
+  /** The visible signals as a cycle-by-cycle timing diagram, opened in the Studio (new tab). */
+  const toTiming = () => {
+    // testbench bookkeeping (integer counters, parameters) isn't part of the design's timing
+    const d = fromVcd(displaySignals.filter((sg) => sg.type !== "parameter" && sg.type !== "integer"), maxTime, 32, nsPerUnit(timescale));
+    try { localStorage.setItem(FROM_SIM_KEY, JSON.stringify(d)); } catch { window.alert("Your browser blocked local storage, so the diagram can't be passed on."); return; }
+    window.open("/studio/timing", "_blank", "noopener");
+  };
+  const headerBtn = "whitespace-nowrap font-mono text-[9px] px-1.5 py-px rounded text-dim hover:text-ghost hover:bg-rim/50 transition-colors";
   const zoomPercent = Math.round(zoom * 100);
   const isAtFit     = Math.abs(zoom - 1.0) < 0.01;
 
@@ -816,8 +1260,15 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
   return (
     <div
       className={[
-        "flex flex-col bg-pit border-t border-rim overflow-hidden h-full",
+        "flex flex-col bg-pit border-t border-rim overflow-hidden h-full outline-none",
       ].join(" ")}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
+        if (e.key === "]" || e.key === "[") { e.preventDefault(); edgeStep(e.key === "]" ? 1 : -1); }
+      }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+      onDrop={(e) => { if (e.dataTransfer.files[0]) { e.preventDefault(); openVcd(e.dataTransfer.files[0]); } }}
     >
       {/* ── Panel header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 h-8 shrink-0 bg-surface border-b border-rim">
@@ -857,6 +1308,24 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
               t&thinsp;=&thinsp;{Math.round(hoverInfo.time)}
             </span>
           )}
+
+          {(markers.a !== null || markers.b !== null) && (
+            <span className="flex items-center gap-1.5 font-mono text-[9px] tabular-nums">
+              {markers.a !== null && <span style={{ color: MARKER_COLOR.a }}>A={markers.a}</span>}
+              {markers.b !== null && <span style={{ color: MARKER_COLOR.b }}>B={markers.b}</span>}
+              {markers.a !== null && markers.b !== null && (
+                <span className="text-pale">&Delta;={fmtDt(Math.abs(markers.b - markers.a))}</span>
+              )}
+              <button
+                onClick={() => setMarkers({ a: null, b: null })}
+                title="Clear markers"
+                aria-label="Clear markers"
+                className="text-dim hover:text-ghost"
+              >
+                ×
+              </button>
+            </span>
+          )}
         </div>
 
         {/* Right: zoom indicator + download + collapse */}
@@ -877,15 +1346,34 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
 
           {/* Scroll-to-zoom hint — only shown at fit level */}
           {isAtFit && (
-            <span className="hidden sm:block font-mono text-[8px] text-dim/40 select-none">
-              scroll to zoom
+            <span className="hidden xl:block font-mono text-[8px] text-dim/40 select-none">
+              scroll to zoom · click: marker A · shift-click: B
             </span>
+          )}
+
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setHidden([])}
+              className="font-mono text-[9px] px-1.5 py-px rounded text-dim hover:text-ghost hover:bg-rim/50 transition-colors"
+            >
+              show {hiddenCount} hidden
+            </button>
+          )}
+
+          {signals.length > 0 && (
+            <>
+              <button onClick={() => { setDecodeOpen((v) => !v); setXyOpen(false); }} aria-pressed={decodeOpen} title="Decode UART, SPI or I2C traffic on 1-bit signals" className={headerBtn}>Decode</button>
+              <button onClick={() => { setXyOpen((v) => !v); setDecodeOpen(false); }} aria-pressed={xyOpen} title="Plot two buses against each other" className={headerBtn}>X–Y</button>
+              <button onClick={exportSvg} title="Download the chart as SVG" className={headerBtn}>SVG</button>
+              <button onClick={exportCsv} title="Download the visible signals as CSV" className={headerBtn}>CSV</button>
+              <button onClick={toTiming} title="Open the visible signals as a timing diagram (one cycle per clock edge)" className={headerBtn}>→ Timing</button>
+            </>
           )}
 
           {/* Download VCD */}
           {hasVcd && (
             <button
-              onClick={() => downloadVcd(result.waveform.vcd_base64!, "wave.vcd")}
+              onClick={() => downloadVcd(result!.waveform.vcd_base64!, "wave.vcd")}
               className={[
                 "flex items-center gap-1 px-2 py-0.5",
                 "font-mono text-[9px] tracking-wider uppercase",
@@ -910,12 +1398,66 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
         </div>
       </div>
 
+      {/* ── Debug bar: scope, value search, edges, open a VCD, compare runs ── */}
+      {isOpen && (vcd.signals.length > 0 || imported) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 shrink-0 bg-surface/60 border-b border-rim/60 font-mono text-[9px] text-dim">
+          {scopes.length > 1 && (
+            <label className="flex items-center gap-1" title="Show the signals of one module instance">Scope
+              <select value={scopeSel ?? ""} onChange={(e) => setScopeSel(e.target.value || null)}
+                      className="h-5 bg-void border border-rim rounded text-pale">
+                <option value="">all</option>
+                {scopes.map((sc) => <option key={sc} value={sc}>{"\u00a0".repeat(2 * (sc.split(".").length - 1))}{sc.split(".").pop()}</option>)}
+              </select>
+            </label>
+          )}
+          <span className="flex items-center gap-1">
+            <input value={findText} onChange={(e) => setFindText(e.target.value)} placeholder="find: count == 5"
+                   onKeyDown={(e) => { if (e.key === "Enter") findStep(e.shiftKey ? -1 : 1); }}
+                   aria-label="Find a value, e.g. count == 5" title="Find when a signal has a value: count == 5, state != 0x2, q == x, ready (high). Enter: next, Shift+Enter: previous"
+                   className="w-36 h-5 px-1 bg-void border border-rim rounded text-pale placeholder:text-dim/50" />
+            <button onClick={() => findStep(-1)} disabled={!findRanges.length} className={headerBtn} aria-label="Previous match">◀</button>
+            <button onClick={() => findStep(1)} disabled={!findRanges.length} className={headerBtn} aria-label="Next match">▶</button>
+            {findError ? <span className="text-warn">{findError}</span>
+              : findRanges.length > 0 && <span className="text-pale">{findRanges.length} match{findRanges.length === 1 ? "" : "es"}</span>}
+          </span>
+          <span className="flex items-center gap-1" title="Step marker A to the previous / next change of the selected signal (click a name to select it), or of any signal. Keys: [ and ]">
+            edge of {selectedKey ? <span className="text-phosphor">{byKey.get(selectedKey)?.name ?? selectedKey}</span> : "any signal"}
+            <button onClick={() => edgeStep(-1)} className={headerBtn} aria-label="Previous edge">◀ [</button>
+            <button onClick={() => edgeStep(1)} className={headerBtn} aria-label="Next edge">] ▶</button>
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            {prevRun && !imported && (
+              <button onClick={() => setCompareOn((v) => !v)} aria-pressed={compareOn} className={headerBtn}
+                      title="Shade where this run differs from the previous one, and mark the signals that changed">
+                {compareOn ? (diff && diff.signals.length ? `≠ ${diff.signals.length} signal${diff.signals.length === 1 ? "" : "s"} differ` : "= same as previous run") : "Compare with previous run"}
+              </button>
+            )}
+            {imported ? (
+              <span className="flex items-center gap-1"><span className="text-info">{imported.name}</span>
+                <button onClick={() => setImported(null)} className={headerBtn}>back to this run</button></span>
+            ) : (
+              <label className={`${headerBtn} cursor-pointer`} title="Open a .vcd file from your computer (or drop it on the waveform)">
+                Open VCD<input type="file" accept=".vcd,text/plain" className="hidden" onChange={(e) => { openVcd(e.target.files?.[0]); e.target.value = ""; }} />
+              </label>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* ── Empty state ────────────────────────────────────────────────────── */}
       {isOpen && signals.length === 0 && <EmptyState />}
 
       {/* ── Diagram body ───────────────────────────────────────────────────── */}
       {isOpen && signals.length > 0 && (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex flex-1 min-h-0 overflow-hidden">
+          {xyOpen && (
+            <XyPlot buses={displaySignals.filter((sg) => sg.width > 1)} signedOf={isSigned} onClose={() => setXyOpen(false)} />
+          )}
+          {decodeOpen && (
+            <DecodePanel spec={decoder} setSpec={setDecoder} oneBit={oneBitKeys} frames={frames} onJump={jumpTo}
+                         autoBit={decoder?.kind === "uart" && byKey.get(decoder.signals.line) ? autoBitTime(byKey.get(decoder.signals.line)!) : null}
+                         onClose={() => setDecodeOpen(false)} />
+          )}
 
           {/*
            * ── Left column: sticky search header + scrollable labels ──────────
@@ -975,9 +1517,20 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
                 key={sig.id}
                 sig={sig}
                 hoverValue={hoverInfo?.values[sig.id]}
-                radix={radixMap[sig.id] ?? defaultRadix(sig.width)}
+                radix={radixMap[rowKey.get(sig.id)!] ?? defaultRadix(sig.width)}
                 onRadixChange={handleRadixChange}
                 dimmed={dimmedIds.has(sig.id)}
+                rowKey={rowKey.get(sig.id)!}
+                onHide={handleHide}
+                onMove={handleMove}
+                plotted={sig.width > 1 && !!plotMap[rowKey.get(sig.id)!]}
+                onPlotToggle={handlePlotToggle}
+                expanded={!!expandMap[sigKey(sig)]}
+                onExpandToggle={handleExpand}
+                selected={selectedKey === rowKey.get(sig.id)}
+                onSelect={(k) => setSelectedKey((cur) => (cur === k ? null : k))}
+                differs={differing.has(sig.name)}
+                onReveal={onReveal && !imported ? (sg) => onReveal(sg.name.replace(/\[\d+\]$/, ""), sg.scope ?? "") : undefined}
               />
             ))}
           </div>
@@ -992,8 +1545,9 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
            */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-x-auto overflow-y-auto cursor-crosshair"
+            className="flex-1 overflow-x-auto overflow-y-auto cursor-crosshair select-none"
             style={{ scrollbarWidth: "thin", scrollbarColor: "#22232d transparent" }}
+            onClick={handleClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onScroll={(e) => {
@@ -1009,6 +1563,7 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
              */}
             {containerWidth > 0 && (
               <svg
+                ref={svgRef}
                 width={chartW}
                 height={svgH}
                 style={{ display: "block" }}
@@ -1017,6 +1572,28 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
                 <rect x={0} y={0} width={chartW} height={svgH}  fill="#0d0e11" />
                 <rect x={0} y={0} width={chartW} height={AXIS_H} fill="#13141a" />
 
+                {/* ── Mismatch bands (yours ≠ expected) ─────────────────── */}
+                {shaded?.map((h, i) => (
+                  <rect key={`hl-${i}`} x={h.from * pxPerUnit} y={AXIS_H}
+                        width={Math.max((h.to - h.from) * pxPerUnit, 2)} height={svgH - AXIS_H}
+                        fill="#ff4f4f" opacity={0.14} />
+                ))}
+                {shaded?.[0] && (
+                  <g>
+                    <line x1={shaded[0].from * pxPerUnit} x2={shaded[0].from * pxPerUnit} y1={AXIS_H} y2={svgH}
+                          stroke="#ff4f4f" strokeWidth={1.5} strokeDasharray="3 3" />
+                    <text x={shaded[0].from * pxPerUnit + 4} y={AXIS_H - 6} fontSize={9} fill="#ff4f4f" fontFamily="monospace">
+                      first difference
+                    </text>
+                  </g>
+                )}
+
+                {/* ── Value-search matches: amber ticks along the axis ─── */}
+                {findRanges.slice(0, 500).map((r, i) => (
+                  <rect key={`fm-${i}`} x={r.from * pxPerUnit} y={AXIS_H - 5} width={Math.max((r.to - r.from) * pxPerUnit, 2)} height={4}
+                        fill="#ffb547" opacity={0.85} pointerEvents="none" />
+                ))}
+
                 {/* ── Grid infrastructure ───────────────────────────────── */}
                 {gridElements.tickLines}
                 {gridElements.rowDividers}
@@ -1024,6 +1601,24 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
 
                 {/* ── Signal waveforms ──────────────────────────────────── */}
                 {dimmedWaveformElements}
+
+                {/* ── Decoded protocol frames, over the decoder's primary signal ── */}
+                {decodeOverlay}
+
+                {/* ── Pinned markers A / B ──────────────────────────────── */}
+                {(["a", "b"] as const).map((k) => {
+                  const t = markers[k];
+                  if (t === null) return null;
+                  const x = t * pxPerUnit;
+                  return (
+                    <g key={`mk-${k}`} pointerEvents="none">
+                      <line x1={x} x2={x} y1={2} y2={svgH} stroke={MARKER_COLOR[k]} strokeWidth={1.25} />
+                      <text x={x + 3} y={10} fontSize={9} fill={MARKER_COLOR[k]} fontFamily="monospace">
+                        {k.toUpperCase()}
+                      </text>
+                    </g>
+                  );
+                })}
 
                 {/*
                  * ── Vertical cursor line ──────────────────────────────────
@@ -1066,6 +1661,71 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
           </div>
         </div>
       )}
+    </div>
+  );
+}
+/** The learner's own signals on the first failing hidden test (from the submit response). */
+export function FailingWaveformView({ data }: {
+  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[]; trace?: TraceStep[] };
+}) {
+  const test = data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test";
+  const diff = data.mismatches;
+  const [markAt, setMarkAt] = useState<{ time: number } | undefined>();
+  const [active, setActive] = useState<number | null>(null);
+  const goStep = (i: number, step: TraceStep) => {
+    setActive(i);
+    setMarkAt({ time: step.time });
+    if (step.line) window.dispatchEvent(new CustomEvent(REVEAL_LINE, { detail: step.line }));
+  };
+  return (
+    <div className="space-y-1">
+      {data.trace && data.trace.length > 0 && (
+        <div className="rounded border border-danger/40 bg-danger/5 p-2 space-y-1.5" aria-label="Trace the bug">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-danger">Trace the bug</span>
+            <span className="font-mono text-[9px] text-dim">Click a step: the line lights up in your code and the waveform jumps there.</span>
+          </div>
+          <ol className="space-y-1">
+            {data.trace.map((step, i) => (
+              <li key={i}>
+                <button type="button" onClick={() => goStep(i, step)}
+                        className={`w-full text-left rounded px-2 py-1.5 font-mono text-[11px] border transition-colors ${active === i ? "border-danger/60 bg-danger/10" : "border-transparent hover:border-rim hover:bg-void/40"}`}>
+                  <span className="text-danger font-bold mr-1.5">{i + 1}.</span>
+                  <span className="text-pale">{step.title}</span>
+                  {step.detail && <span className="block whitespace-pre-wrap text-ghost mt-0.5 pl-4">{step.detail}</span>}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      <p className="font-mono text-[9px] text-dim">
+        {diff
+          ? <>Your design on {test}. Each output is shown twice: &ldquo;yours&rdquo; and &ldquo;expected&rdquo; (a correct design on the same test).{" "}
+              {diff.length
+                ? <span className="text-danger">Red bands mark where they differ; the first difference is at t={diff[0].from}.</span>
+                : "They match on this test, so the failure comes from the test's own checks (such as timing or printed output)."}</>
+          : <>Your design on {test}: only signals inside your module are shown.</>}
+      </p>
+      <div className={`h-64 border rounded overflow-hidden ${diff?.length ? "border-danger/40" : "border-rim/60"}`}>
+        <WaveformPanel parsedVcd={data.waveform} highlights={diff} markAt={markAt} />
+      </div>
+    </div>
+  );
+}
+
+/** Shortest input sequence (from reset) where the learner's outputs differ from a correct design. */
+export function CounterexampleView({ data }: { data: { cycles: number; waveform: ParsedVcd } }) {
+  return (
+    <div className="space-y-1">
+      <p className="font-mono text-[9px] text-dim">
+        Where your design goes wrong: starting from reset, these inputs make your outputs (&ldquo;yours&rdquo;) differ
+        from a correct design (&ldquo;expected&rdquo;) after {data.cycles} clock step{data.cycles === 1 ? "" : "s"}.
+        It is the shortest such sequence.
+      </p>
+      <div className="h-64 border border-warn/40 rounded overflow-hidden">
+        <WaveformPanel parsedVcd={data.waveform} />
+      </div>
     </div>
   );
 }

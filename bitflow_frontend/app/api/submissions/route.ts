@@ -1,9 +1,11 @@
 /**
  * app/api/submissions/route.ts
  *
- * POST /api/submissions — Save a simulation result to the Submission table
- *                          Called by useArenaProblem and useProblem hooks
- *                          after every run/submit.
+ * POST /api/submissions — Save a RUN (public-testbench) result to the
+ *                          Submission table. Called by useArenaProblem and
+ *                          useProblem after every run. Graded SUBMITs go
+ *                          through POST /api/problems/[slug]/submit instead,
+ *                          so nothing posted here can award XP.
  *
  * GET  /api/submissions — Fetch submission history for the current user
  *
@@ -11,48 +13,70 @@
  */
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth-utils";
+import { recordSubmission } from "@/lib/record-submission";
+import { reportError } from "@/lib/error-log";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+// Size caps (characters). A request over MAX_BODY is refused; the VCD is dropped when too big.
+const MAX_BODY = 4_000_000;
+const MAX_CODE = 200_000;
+const MAX_TEXT = 64_000;
+const MAX_VCD  = 2_000_000;
+const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// POST — Save a submission (from run or submit)
+// POST — Save a run (signed-in users only: guests' runs are not stored)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Sign in to save runs." }, { status: 401 });
+    const { success } = await rateLimit(request, { limit: 30, windowMs: 60_000, prefix: "runsave", key: `user:${user.id}` });
+    if (!success) return NextResponse.json({ error: "Too many runs saved; try again in a minute." }, { status: 429 });
+
+    const raw = await request.text();
+    if (raw.length > MAX_BODY) return NextResponse.json({ error: "Run too large to save." }, { status: 413 });
+    const body = JSON.parse(raw);
 
     const {
-      userId,           // string | null (optional, for guest submissions)
       problemSlug,      // string (required) — used to find Question.id
       designCode,       // string (required)
       testbenchCode,    // string (required)
-      submissionType,   // "RUN" | "SUBMIT"
+      submissionType,   // must be "RUN"
       simStatus,        // "SUCCESS" | "COMPILE_ERROR" | "RUNTIME_ERROR" | "TIMEOUT"
       simStdout,        // string | null
       simStderr,        // string | null
       simExitCode,      // number | null
       durationMs,       // number | null
-      testcaseResults,  // Array<{id, description, passed, expected, actual}>
       waveformVcd,      // string | null (base64)
-      xpEarned,         // number
-      accepted,         // boolean
     } = body;
+    const language = ["vhdl", "python"].includes(body?.language) ? body.language as "vhdl" | "python" : "verilog";
 
-    // Validate required fields
-    if (!problemSlug || !designCode || !testbenchCode) {
+    if (typeof problemSlug !== "string" || typeof designCode !== "string" || typeof testbenchCode !== "string"
+        || !problemSlug || !designCode || !testbenchCode) {
       return NextResponse.json(
         { error: "problemSlug, designCode, and testbenchCode are required." },
         { status: 400 }
       );
     }
+    if (designCode.length > MAX_CODE || testbenchCode.length > MAX_CODE) {
+      return NextResponse.json({ error: "Code too large to save." }, { status: 413 });
+    }
+    if (submissionType && submissionType !== "RUN") {
+      return NextResponse.json(
+        { error: "Submissions are graded via POST /api/problems/[slug]/submit." },
+        { status: 400 }
+      );
+    }
 
-    // Look up the Question by slug
     const question = await prisma.question.findUnique({
-      where: { slug: problemSlug },
-      select: { id: true },
+      where:  { slug: problemSlug },
+      select: { id: true, moduleId: true },
     });
 
     if (!question) {
@@ -63,119 +87,33 @@ export async function POST(request: Request) {
       );
     }
 
-    const sessionUserId = cookies().get("bitflow_session")?.value;
-    const effectiveUserId = sessionUserId ?? userId;
+    const SIM_STATUSES = ["SUCCESS", "COMPILE_ERROR", "RUNTIME_ERROR", "TIMEOUT"];
+    const vcd = str(waveformVcd, MAX_VCD + 1);
 
-    // Prefer the signed-in session user. The body userId is only a legacy fallback.
-    let dbUserId: string | null = null;
-    if (effectiveUserId) {
-      const user = await prisma.user.findUnique({
-        where: { id: effectiveUserId },
-        select: { id: true },
-      });
-      if (user) {
-        dbUserId = user.id;
-      }
-    }
-
-    // Count previous attempts for this user + problem (optional, for metrics)
-    const attemptCount = dbUserId
-      ? await prisma.submission.count({
-          where: { userId: dbUserId, problemId: question.id },
-        })
-      : 0;
-
-    // Save submission
-    const submission = await prisma.submission.create({
-      data: {
-        userId:         dbUserId ?? undefined,
-        problemId:      question.id,
-        designCode,
-        testbenchCode,
-        submissionType: submissionType ?? "RUN",
-        attemptNumber:  attemptCount + 1,
-        simStatus:      simStatus ?? "SUCCESS",
-        simStdout:      simStdout ?? null,
-        simStderr:      simStderr ?? null,
-        simExitCode:    simExitCode ?? null,
-        durationMs:     durationMs ?? null,
-        testcaseResults: JSON.stringify(testcaseResults ?? []),
-        numTestsPassed: Array.isArray(testcaseResults)
-          ? testcaseResults.filter((t: any) => t.passed).length
-          : 0,
-        numTestsTotal: Array.isArray(testcaseResults)
-          ? testcaseResults.length
-          : 0,
-        waveformVcd:   waveformVcd ?? null,
-        xpEarned:      xpEarned ?? 0,
-        accepted:      accepted ?? false,
-      },
-      select: {
-        id:             true,
-        attemptNumber:  true,
-        accepted:       true,
-        numTestsPassed: true,
-        numTestsTotal:  true,
-        xpEarned:       true,
-        createdAt:      true,
-      },
+    const submission = await recordSubmission({
+      userId:          user.id,
+      question,
+      designCode,
+      testbenchCode,
+      language,
+      submissionType:  "RUN",
+      simStatus:       SIM_STATUSES.includes(simStatus) ? simStatus : "SUCCESS",
+      simStdout:       str(simStdout, MAX_TEXT),
+      simStderr:       str(simStderr, MAX_TEXT),
+      simExitCode:     Number.isInteger(simExitCode) ? simExitCode : null,
+      durationMs:      Number.isFinite(durationMs) ? Math.round(durationMs) : null,
+      testcaseResults: [],
+      waveformVcd:     vcd && vcd.length <= MAX_VCD ? vcd : null,
+      xpEarned:        0,
+      accepted:        false,
     });
-
-    // If this was a SUBMIT and ACCEPTED, update UserProgress
-    if (dbUserId && accepted && submissionType === "SUBMIT") {
-      // Get existing progress to check if this is first solve
-      const existing = await prisma.userProgress.findUnique({
-        where: {
-          userId_problemId: { userId: dbUserId, problemId: question.id },
-        },
-        select: { solved: true, firstSolvedAt: true },
-      });
-
-      const isFirstSolve = !existing?.solved;
-
-      await prisma.userProgress.upsert({
-        where: {
-          userId_problemId: { userId: dbUserId, problemId: question.id },
-        },
-        create: {
-          userId:        dbUserId,
-          problemId:     question.id,
-          solved:        true,
-          attempts:      attemptCount + 1,
-          firstSolvedAt: new Date(),
-          xpEarned:      xpEarned ?? 0,
-        },
-        update: {
-          attempts:  { increment: 1 },
-          // Only set firstSolvedAt on first solve
-          ...(isFirstSolve
-            ? {
-                solved:        true,
-                firstSolvedAt: new Date(),
-                xpEarned:      { increment: xpEarned ?? 0 },
-              }
-            : {
-                attempts: { increment: 1 },
-              }),
-        },
-      });
-
-      // Update user's total XP (only if first solve)
-      if (isFirstSolve && (xpEarned ?? 0) > 0) {
-        await prisma.userXp.upsert({
-          where:  { userId: dbUserId },
-          create: { userId: dbUserId, totalXp: xpEarned ?? 0 },
-          update: { totalXp: { increment: xpEarned ?? 0 } },
-        });
-      }
-    }
 
     return NextResponse.json({ submission }, { status: 201 });
 
   } catch (err) {
-    console.error("[submissions POST] error:", err);
+    await reportError("[submissions POST] error:", err);
     return NextResponse.json(
-      { error: "Internal Server Error", details: String(err) },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
@@ -188,7 +126,13 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId       = searchParams.get("userId");
+    // Only your own history; admins may look up any user with ?userId=.
+    const me = await getSessionUser();
+    if (!me) {
+      return NextResponse.json({ error: "Sign in to view submissions." }, { status: 401 });
+    }
+    const requested    = searchParams.get("userId");
+    const userId       = me.role === "ADMIN" && requested ? requested : me.id;
     const problemSlug  = searchParams.get("slug");
     const limit        = Math.min(parseInt(searchParams.get("limit") ?? "50"), 200);
 
@@ -234,7 +178,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ submissions });
 
   } catch (err) {
-    console.error("[submissions GET] error:", err);
+    await reportError("[submissions GET] error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

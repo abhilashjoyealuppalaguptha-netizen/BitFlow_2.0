@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/progress - Fetch user progress
 export async function GET() {
   try {
-    const sessionCookie = cookies().get("bitflow_session")?.value;
+    const userId = (await getSessionUser())?.id;
 
-    if (!sessionCookie) {
+    if (!userId) {
       return NextResponse.json({
         progress: {
           totalXp: 0,
@@ -21,11 +22,11 @@ export async function GET() {
     }
 
     const userXp = await prisma.userXp.findUnique({
-      where: { userId: sessionCookie },
+      where: { userId: userId },
     });
 
     const progressRecords = await prisma.userProgress.findMany({
-      where: { userId: sessionCookie },
+      where: { userId: userId },
     });
 
     const problemsRecord: Record<string, any> = {};
@@ -54,7 +55,7 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error("Fetch progress error:", err);
+    await reportError("Fetch progress error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
@@ -65,22 +66,25 @@ export async function GET() {
 // POST /api/progress - Record solves, attempts, and hint unlocks
 export async function POST(request: Request) {
   try {
-    const sessionCookie = cookies().get("bitflow_session")?.value;
-    if (!sessionCookie) {
+    const userId = (await getSessionUser())?.id;
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
-    const { actionType, problemId, moduleId, xpReward, hintTier } = await request.json();
+    const { actionType, problemId, hintTier } = await request.json();
 
     if (!problemId) {
       return NextResponse.json({ error: "ProblemId is required." }, { status: 400 });
+    }
+    if (!(await prisma.question.findUnique({ where: { id: problemId }, select: { id: true } }))) {
+      return NextResponse.json({ error: "Problem not found." }, { status: 404 });
     }
 
     // Load or create UserProgress record
     let userProgress = await prisma.userProgress.findUnique({
       where: {
         userId_problemId: {
-          userId: sessionCookie,
+          userId: userId,
           problemId,
         },
       },
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
     if (!userProgress) {
       userProgress = await prisma.userProgress.create({
         data: {
-          userId: sessionCookie,
+          userId: userId,
           problemId,
           solved: false,
           attempts: 0,
@@ -101,51 +105,22 @@ export async function POST(request: Request) {
 
     // Load UserXp
     let userXp = await prisma.userXp.findUnique({
-      where: { userId: sessionCookie },
+      where: { userId: userId },
     });
 
     if (!userXp) {
       userXp = await prisma.userXp.create({
         data: {
-          userId: sessionCookie,
+          userId: userId,
           totalXp: 0,
           unlockedModules: JSON.stringify(["mod_logic_gates", "mod_arithmetic"]),
         },
       });
     }
 
-    const currentUnlockedModules = JSON.parse(userXp.unlockedModules || "[]");
-
-    if (actionType === "solve") {
-      const alreadySolved = userProgress.solved;
-      const additionalXp = alreadySolved ? 0 : (Number(xpReward) || 0);
-
-      // Update UserProgress
-      userProgress = await prisma.userProgress.update({
-        where: { id: userProgress.id },
-        data: {
-          solved: true,
-          attempts: userProgress.attempts + 1,
-          firstSolvedAt: userProgress.firstSolvedAt || new Date(),
-          xpEarned: userProgress.xpEarned + additionalXp,
-        },
-      });
-
-      // Update UserXp
-      const newXp = userXp.totalXp + additionalXp;
-      const newModules = [...currentUnlockedModules];
-      if (moduleId && !newModules.includes(moduleId)) {
-        newModules.push(moduleId);
-      }
-
-      userXp = await prisma.userXp.update({
-        where: { id: userXp.id },
-        data: {
-          totalXp: newXp,
-          unlockedModules: JSON.stringify(newModules),
-        },
-      });
-    } else if (actionType === "attempt") {
+    // Solves, XP and module unlocks are recorded only by server-side grading
+    // (POST /api/problems/[slug]/submit), never from client-reported results.
+    if (actionType === "attempt") {
       userProgress = await prisma.userProgress.update({
         where: { id: userProgress.id },
         data: {
@@ -167,7 +142,7 @@ export async function POST(request: Request) {
 
     // Return the updated overall progress record
     const progressRecords = await prisma.userProgress.findMany({
-      where: { userId: sessionCookie },
+      where: { userId: userId },
     });
 
     const problemsRecord: Record<string, any> = {};
@@ -192,7 +167,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    console.error("Update progress error:", err);
+    await reportError("Update progress error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

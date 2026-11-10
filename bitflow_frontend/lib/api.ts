@@ -13,20 +13,15 @@
 
 import axios, { AxiosError } from "axios";
 import type { SimulateRequest, SimulateResponse } from "./types";
+import { awakeRecently, shouldRetrySimulation, simulatorAwake, trackWake } from "./sim-status";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Axios instance
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Base URL for the FastAPI backend.
- *
- * In development this talks directly to the uvicorn process.
- * In production, set NEXT_PUBLIC_API_URL to your deployed backend URL,
- * or rely on the /api rewrite in next.config.js to proxy requests.
- *
- * NEXT_PUBLIC_ prefix is required by Next.js for variables that must be
- * visible in the browser bundle.
+ * The browser only talks to our own Next.js routes; /api/simulate forwards to
+ * the FastAPI backend server-side (see lib/backend.ts, BACKEND_URL).
  */
 const BASE_URL = "/api/simulate";
 
@@ -54,22 +49,15 @@ function normaliseError(err: unknown): Error {
   if (axios.isAxiosError(err)) {
     const axErr = err as AxiosError<{ error?: string; detail?: string }>;
 
-    const effectiveBackendUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
-      (process.env.NODE_ENV === "production"
-        ? "https://bitflow-backend-uyji.onrender.com"
-        : "http://127.0.0.1:8000");
-
-    // Network-level failure (backend not running, CORS, timeout)
+    // Network-level failure (server down, connection dropped, timeout)
     if (!axErr.response) {
       return new Error(
-        `Cannot reach the backend at ${effectiveBackendUrl}. ` +
-        "Is the FastAPI server running? (uvicorn api.main:app --reload)"
+        "Cannot reach the BitFlow server. Check your connection and try again."
       );
     }
 
     // Backend returned a response body
-    const data = axErr.response.data;
+    const data: any = axErr.response.data; // may be a plain string (e.g. proxy 429 page)
     if (typeof data === "string" && data.includes("Too Many Requests")) {
       return new Error("Rate limit reached. Please wait a few seconds before retrying.");
     }
@@ -89,7 +77,7 @@ function normaliseError(err: unknown): Error {
       axErr.response.status === 504
     ) {
       return new Error(
-        "Backend server is rate-limited or cold starting (Render Free Limit). Retrying automatically..."
+        "Simulation server is busy or restarting. Please try again in a few seconds."
       );
     }
 
@@ -124,21 +112,19 @@ export async function runSimulation(
   payload: SimulateRequest,
   retries = 6
 ): Promise<SimulateResponse> {
+  const wasAwake = simulatorAwake();
   try {
-    const { data } = await apiClient.post<SimulateResponse>(
-      "",
-      payload
-    );
+    const { data } = await trackWake(apiClient.post<SimulateResponse>("", payload));
     return data;
   } catch (err) {
-    // If connection dropped, socket timed out, cold starting, or rate limited (429/502/503/504), auto-retry
+    // Retry only real outages and cold starts (lib/sim-status.ts shouldRetrySimulation):
+    // never a 504 from an awake simulator (a long run would just run again), never a 429.
     const isRetryable =
-      axios.isAxiosError(err) &&
-      (!err.response || (err.response.status && [429, 502, 503, 504].includes(err.response.status)));
+      axios.isAxiosError(err) && shouldRetrySimulation(err.response?.status, wasAwake);
 
     if (isRetryable && retries > 0) {
       const delayMs = Math.min((7 - retries) * 3000, 10000); // 3s, 6s, 9s, 10s, 10s, 10s backoff
-      console.log(`[BitFlow] Server connection/response issue (Render cold start). Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
+      console.log(`[BitFlow] Simulation server unavailable. Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return runSimulation(payload, retries - 1);
     }
@@ -147,19 +133,45 @@ export async function runSimulation(
 }
 
 /**
+ * POST /api/problems/[slug]/submit
+ *
+ * Grade a solution on the server against the problem's hidden tests.
+ * Returns the SubmissionResult; XP and progress are recorded server-side.
+ */
+export async function submitSolution<T>(
+  slug: string,
+  designCode: string,
+  testbenchCode: string,
+  languages: { language?: "verilog" | "vhdl"; testbenchLanguage?: "verilog" | "python" } = {},
+): Promise<T> {
+  try {
+    const { data } = await trackWake(axios.post<{ submission: T }>(
+      `/api/problems/${encodeURIComponent(slug)}/submit`,
+      { designCode, testbenchCode, ...languages },
+      { timeout: 300_000 } // several hidden testcases, each up to 30 s
+    ));
+    return data.submission;
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
  * GET /health
  *
- * Quick liveness check — useful for showing a "backend offline" banner
- * before the user hits Run.
+ * Called when an editor page opens: wakes the simulator if it is asleep, so
+ * it is usually ready by the first Run (lib/sim-status.ts shows the wait).
  * Returns true if the backend responds, false otherwise (never throws).
  */
-export async function checkHealth(): Promise<boolean> {
-  try {
-    await axios.get("/api/simulate/health", { timeout: 3_000 });
-    return true;
-  } catch {
-    return false;
-  }
+let healthCheck: Promise<boolean> | null = null;
+
+export function checkHealth(): Promise<boolean> {
+  if (awakeRecently()) return Promise.resolve(true);
+  // Pages that open together (or a quick back-and-forth) share one request.
+  healthCheck ??= trackWake(axios.get("/api/simulate/health", { timeout: 120_000 }))
+    .then(() => true, () => false)
+    .finally(() => { healthCheck = null; });
+  return healthCheck;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +188,14 @@ export async function checkHealth(): Promise<boolean> {
  * @param vcdBase64 - The waveform.vcd_base64 field from SimulateResponse
  * @param filename  - Downloaded filename (default: wave.vcd)
  */
+/** Save `data` as a file named `name` (the browser's download prompt). */
+export function downloadBlob(name: string, data: BlobPart, type: string): void {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function downloadVcd(
   vcdBase64: string,
   filename = "wave.vcd"

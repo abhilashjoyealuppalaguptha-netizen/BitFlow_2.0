@@ -1,12 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { prewarmSimulator } from "@/lib/sim-status";
 import Link from "next/link";
-import type { DbProblem } from "@/lib/db-loader";
+import SiteHeader from "@/components/SiteHeader";
+/** What the hub needs per problem (app/arena/page.tsx); never code. */
+export interface HubProblem {
+  slug: string; title: string; difficulty: string; category: string; xpReward: number; blurb: string;
+  /** Find-the-bug problems open after their original is solved. */
+  locked: { title: string; href: string } | null;
+}
 
 interface ArenaHubClientProps {
-  problems: DbProblem[];
+  problems: HubProblem[];
 }
+
+const DEBUG = "Debug";
 
 const DIFFICULTY_ORDER = ["Easy", "Medium", "Hard", "Expert"];
 
@@ -22,7 +31,11 @@ function difficultyRank(value: string) {
   return index === -1 ? DIFFICULTY_ORDER.length : index;
 }
 
-export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
+export default function ArenaHubClient({ problems: all }: ArenaHubClientProps) {
+  useEffect(prewarmSimulator, []);
+  const [view, setView] = useState<"challenges" | "debug">("challenges");
+  const debugCount = all.filter((p) => p.category === DEBUG).length;
+  const problems = useMemo(() => all.filter((p) => (p.category === DEBUG) === (view === "debug")), [all, view]);
   const difficulties = Array.from(new Set(problems.map((p) => p.difficulty)))
     .sort((a, b) => difficultyRank(a) - difficultyRank(b) || a.localeCompare(b));
 
@@ -34,7 +47,7 @@ export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
   }, [problems, selectedDifficulty]);
 
   const byDifficulty = useMemo(() => {
-    const groups = new Map<string, DbProblem[]>();
+    const groups = new Map<string, HubProblem[]>();
     for (const problem of visibleProblems) {
       const existing = groups.get(problem.difficulty) ?? [];
       existing.push(problem);
@@ -57,37 +70,28 @@ export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
         }}
       />
 
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-3">
-          <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-          <div className="leading-none">
-            <div className="font-display text-[13px] font-bold">BitFlow</div>
-            <div className="font-mono text-[9px] text-dim uppercase tracking-widest">HDL Arena</div>
-          </div>
-        </Link>
-
-        <nav className="flex items-center gap-5">
-          <Link href="/dashboard" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Dashboard
-          </Link>
-          <Link href="/sandbox" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Sandbox IDE
-          </Link>
-          <Link href="/learn" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Learn
-          </Link>
-          <Link href="/academy" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Academy
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <div className="relative z-[1] max-w-6xl mx-auto px-6 py-10">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-10">
           <div>
             <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">HDL Arena</div>
-            <h1 className="font-serif text-4xl text-bright mb-2">Practice problems.</h1>
-            <p className="text-ghost text-sm">Interview-tier problems. No hints. No hand-holding.</p>
+            <h1 className="font-serif text-4xl text-bright mb-2">{view === "debug" ? "Fix the bug." : "Practice problems."}</h1>
+            <p className="text-ghost text-sm">
+              {view === "debug"
+                ? "A design you have solved, with one line broken. Each opens once you solve the original."
+                : "Interview-tier problems. No hints. No hand-holding."}
+            </p>
+            {debugCount > 0 && (
+              <div className="flex gap-2 mt-4" role="tablist" aria-label="Arena sections">
+                {([["challenges", "Challenges"], ["debug", `Fix the bug (${debugCount})`]] as const).map(([id, label]) => (
+                  <button key={id} role="tab" aria-selected={view === id} onClick={() => { setView(id); setSelectedDifficulty("All"); }}
+                    className={`px-3 py-1.5 rounded border font-mono text-[11px] ${view === id ? "border-phosphor/60 text-phosphor bg-phosphor/10" : "border-rim/60 text-ghost hover:text-bright"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* difficulty filter — glassy tabs */}
@@ -126,7 +130,18 @@ export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
                   {difficulty}
                 </h2>
                 <div className="grid gap-3">
-                  {groupedProblems.map((problem) => (
+                  {groupedProblems.map((problem) => problem.locked ? (
+                    <div key={problem.slug}
+                      className="flex items-center justify-between gap-4 p-4 rounded-xl border border-rim/40 bg-pit/20 opacity-70">
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm text-ghost">🔒 {problem.title}</div>
+                        <div className="text-xs text-dim mt-1">
+                          Solve <Link href={problem.locked.href} className="text-info hover:underline">{problem.locked.title}</Link> first.
+                        </div>
+                      </div>
+                      <div className="text-xs font-mono text-dim shrink-0">+{problem.xpReward} XP</div>
+                    </div>
+                  ) : (
                     <Link
                       key={problem.slug}
                       href={`/arena/${problem.category.toLowerCase()}/${problem.slug}`}
@@ -140,7 +155,7 @@ export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
                           {problem.title}
                         </div>
                         <div className="text-xs text-ghost mt-1 line-clamp-2">
-                          {problem.statement.substring(0, 140)}...
+                          {problem.blurb}...
                         </div>
                       </div>
                       <div className="text-xs font-mono text-phosphor shrink-0">

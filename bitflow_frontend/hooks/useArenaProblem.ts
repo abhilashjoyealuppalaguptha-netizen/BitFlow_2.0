@@ -5,19 +5,44 @@
  * Parallel to hooks/useProblem.ts but operates on ArenaProblem objects.
  * Reuses the same backend /simulate endpoint via lib/api.ts runSimulation().
  *
- * Key differences from useProblem:
- *   - No hiddenTestbench string fallback (Arena always uses hiddenTestcases[])
- *   - No moduleId / learning-path coupling
- *   - Verdict comparison uses the same compareStdout sentinel logic
- *   - ✅ NOW: Saves all submissions to Prisma via saveSubmission()
+ * submit() is graded server-side (POST /api/problems/[slug]/submit), same as
+ * useProblem; hidden testcases never reach the browser.
+ *
+ * Testbench problems can be answered in Verilog or as a cocotb (Python) test
+ * module; formal problems are answered with a property harness, and their Run is
+ * a bounded formal check (POST /api/formal) shown in the same terminal/waveform.
  */
 
-import { useState, useCallback } from "react";
-import type { ArenaProblem, ArenaSubmissionResult, ArenaVerdictItem } from "@/lib/arena/types";
+import { useState, useCallback, useEffect } from "react";
+import type { ArenaProblem, ArenaSubmissionResult } from "@/lib/arena/types";
 import type { SimulateResponse } from "@/lib/types";
-import { runSimulation } from "@/lib/api";
+import { submitSolution, checkHealth } from "@/lib/api";
+import { runPreferBrowser } from "@/lib/sim/browser-sim";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
+import { rewardMoments } from "@/lib/pixel/rewards";
+
+export type ArenaTestbenchLanguage = "verilog" | "python";
+
+/** Starting point for a cocotb answer to a "find the bugs" problem (the DUT's ports differ per problem). */
+export const COCOTB_TB_SKELETON = `# cocotb testbench: the design is the DUT on the left, reachable as \`dut\`.
+# A failing assert (or exception) means "bug found". Allowed imports: cocotb, random, math, itertools.
+import random
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge, Timer
+
+
+@cocotb.test()
+async def finds_bugs(dut):
+    # For a clocked design, start a clock first:
+    #   cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    # Drive inputs:      dut.a.value = 3
+    # Let logic settle:  await Timer(1, unit="ns")    (or await RisingEdge(dut.clk))
+    # Check outputs:     assert int(dut.y.value) == expected, "explain the mismatch"
+    pass
+`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Run state
@@ -37,6 +62,10 @@ export interface UseArenaProblemReturn {
   testbenchCode:    string;
   setDesignCode:    (v: string) => void;
   setTestbenchCode: (v: string) => void;
+
+  // Testbench language (testbench problems only)
+  testbenchLanguage:    ArenaTestbenchLanguage;
+  setTestbenchLanguage: (l: ArenaTestbenchLanguage) => void;
 
   // State
   runState:         ArenaRunState;
@@ -58,29 +87,32 @@ export interface UseArenaProblemReturn {
   resetToStarter: () => void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Verdict comparison
-// ─────────────────────────────────────────────────────────────────────────────
-
-function compareStdout(actual: string, expected: string): boolean {
-  const normalise = (s: string) =>
-    s.trim().split("\n").map((l) => l.trim()).filter(Boolean);
-
-  const actualLines   = normalise(actual);
-  const expectedLines = normalise(expected);
-
-  // Fast path: "ALL TESTS PASSED" sentinel
-  if (expectedLines.length === 1 && expectedLines[0] === "ALL TESTS PASSED") {
-    return (
-      actual.includes("ALL TESTS PASSED") &&
-      !actual.includes("TESTS FAILED") &&
-      !actual.includes("FAIL:")
-    );
-  }
-
-  return expectedLines.every((el) =>
-    actualLines.some((al) => al.includes(el)),
-  );
+/** A formal check, shaped like a simulation result so the Terminal and waveform show it. */
+async function runFormalCheck(design: string, harness: string, depth: number): Promise<SimulateResponse> {
+  const t0 = Date.now();
+  const res = await fetch("/api/formal", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ designCode: design, harnessCode: harness, mode: "bmc", depth }),
+  });
+  const r = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(r.error ?? `Formal check failed (${res.status})`);
+  const passed = r.status === "passed";
+  const verdict = passed
+    ? `PASS: no assertion fails within ${depth} clock cycles on this design.`
+    : r.status === "failed"
+      ? `FAIL: the assertion at ${r.failed?.file}:${r.failed?.line} fails after ${r.failed?.step ?? "?"} steps. The waveform is the solver's counterexample.`
+      : `ERROR: ${r.error ?? "the check could not run"}`;
+  const vcd: string | null = r.vcd_base64 ?? null;
+  return {
+    status:       passed ? "success" : r.status === "error" ? "compile_error" : "runtime_error",
+    exit_code:    passed ? 0 : 1,
+    success:      passed,
+    stdout:       `--- Formal check (Yosys + Z3, ${depth} cycles from your assumptions) ---\n${r.log ?? ""}\n\n${verdict}`,
+    stderr:       r.status === "error" ? r.error ?? "" : "",
+    waveform:     { available: !!vcd, size_bytes: vcd ? vcd.length : 0, vcd_base64: vcd },
+    duration_ms:  Date.now() - t0,
+    workspace_id: "",
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,28 +121,42 @@ function compareStdout(actual: string, expected: string): boolean {
 
 export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
   const { user } = useAuth();
+  const celebrate = useCelebrate();
+  const isFormal = problem.problemType === "formal";
   const [designCode,    setDesignCode]    = useState(problem.starterCode);
   // Arena exposes the public testbench in the editor (read-only view)
-  const [testbenchCode, setTestbenchCode] = useState(problem.testbenchSkeleton);
+  const [verilogTb,     setVerilogTb]     = useState(problem.testbenchSkeleton);
+  const [cocotbTb,      setCocotbTb]      = useState(COCOTB_TB_SKELETON);
+  const [testbenchLanguage, setTestbenchLanguage] = useState<ArenaTestbenchLanguage>("verilog");
   const [runState,      setRunState]      = useState<ArenaRunState>("idle");
   const [runResult,     setRunResult]     = useState<SimulateResponse | null>(null);
+
+  const testbenchCode    = testbenchLanguage === "python" ? cocotbTb : verilogTb;
+  const setTestbenchCode = testbenchLanguage === "python" ? setCocotbTb : setVerilogTb;
+
+  // Wake the simulator (it sleeps when idle) while the learner reads the problem.
+  useEffect(() => { checkHealth(); }, []);
   const [submission,    setSubmission]    = useState<ArenaSubmissionResult | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [submittingIndex, setSubmittingIndex] = useState(0);
   const [submittingTotal, setSubmittingTotal] = useState(0);
 
-  // ── Run against public testbench ──────────────────────────────────────────
+  // ── Run against public testbench (or a formal check of the harness) ───────
   const run = useCallback(async () => {
     if (runState === "running" || runState === "submitting") return;
     setRunState("running");
     setErrorMsg(null);
     setRunResult(null);
     try {
-      const result = await runSimulation({
-        design_v:    designCode,
-        testbench_v: testbenchCode,
-        timeout:     30,
-      });
+      const result = isFormal
+        ? await runFormalCheck(problem.starterCode, testbenchCode, problem.formalDepth ?? 20)
+        : await runPreferBrowser({
+            design_v:    designCode,
+            testbench_v: testbenchCode,
+            timeout:     30,
+            lint:        true,
+            testbench_language: testbenchLanguage,
+          }, true);
       setRunResult(result);
       setRunState("run_done");
 
@@ -130,130 +176,41 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
         waveformVcd:    result.waveform?.vcd_base64 ?? null,
         xpEarned:       0,
         accepted:       false,
+        language:       testbenchLanguage,
       }).catch(err => console.warn("[useArenaProblem.run] submission save:", err));
 
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
       setRunState("error");
     }
-  }, [runState, designCode, testbenchCode, problem, user?.id]);
+  }, [runState, designCode, testbenchCode, testbenchLanguage, isFormal, problem, user?.id]);
 
-  // ── Submit against all hidden testcases ───────────────────────────────────
+  // ── Submit (graded on the server against hidden tests) ────────────────────
   const submit = useCallback(async (): Promise<ArenaSubmissionResult | null> => {
     if (runState === "running" || runState === "submitting") return null;
-
-    const testcases = problem.hiddenTestcases ?? [];
-
     setRunState("submitting");
-    setSubmittingTotal(testcases.length);
+    setSubmittingTotal(1);
     setSubmittingIndex(0);
     setErrorMsg(null);
-
-    const verdicts: ArenaVerdictItem[] = [];
-    let totalDurationMs = 0;
-
-    for (let i = 0; i < testcases.length; i++) {
-      setSubmittingIndex(i);
-      const tc = testcases[i];
-
-      let verdict: ArenaVerdictItem;
-      try {
-        const t0     = performance.now();
-        const result = await runSimulation({
-          design_v:    designCode,
-          testbench_v: tc.testbench,
-          timeout:     30,
-        });
-        const elapsed = performance.now() - t0;
-        totalDurationMs += elapsed;
-
-        if (!result.success) {
-          verdict = {
-            testcaseId:     tc.id,
-            description:    tc.description,
-            passed:         false,
-            actualOutput:   result.stdout ?? "",
-            expectedOutput: tc.expected,
-            durationMs:     elapsed,
-            error:          result.stderr || `Exit status: ${result.status}`,
-          };
-        } else {
-          const stdout = result.stdout ?? "";
-          const passed = compareStdout(stdout, tc.expected);
-          verdict = {
-            testcaseId:     tc.id,
-            description:    tc.description,
-            passed,
-            actualOutput:   stdout,
-            expectedOutput: tc.expected,
-            durationMs:     elapsed,
-          };
-        }
-      } catch (err) {
-        verdict = {
-          testcaseId:     tc.id,
-          description:    tc.description,
-          passed:         false,
-          actualOutput:   "",
-          expectedOutput: tc.expected,
-          durationMs:     0,
-          error:          err instanceof Error ? err.message : "Network error",
-        };
-      }
-
-      verdicts.push(verdict);
+    try {
+      const sub = await submitSolution<ArenaSubmissionResult>(problem.slug, designCode, testbenchCode, { testbenchLanguage });
+      setSubmission(sub);
+      setRunState("submitted");
+      celebrate(...rewardMoments(sub));
+      if (typeof sub.totalXp === "number") window.dispatchEvent(new CustomEvent("bitflow:xp", { detail: sub.totalXp }));
+      return sub;
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Network error");
+      setRunState("error");
+      return null;
     }
-
-    const passedCount = verdicts.filter((v) => v.passed).length;
-    const accepted    = passedCount === testcases.length;
-
-    const sub: ArenaSubmissionResult = {
-      id:              crypto.randomUUID(),
-      problemId:       problem.id,
-      timestamp:       Date.now(),
-      verdicts,
-      passed:          passedCount,
-      total:           testcases.length,
-      accepted,
-      totalDurationMs,
-      submittedCode:   designCode,
-      xpEarned:        accepted ? problem.xpReward : 0,
-    };
-
-    setSubmission(sub);
-    setRunState("submitted");
-
-    // ✅ Save submission to database (fire-and-forget)
-    saveSubmission({
-      userId:         user?.id,
-      problemSlug:    problem.slug,
-      designCode:     designCode,
-      testbenchCode:  testbenchCode,
-      submissionType: "SUBMIT",
-      simStatus:      accepted ? "SUCCESS" : "RUNTIME_ERROR",
-      simStdout:      null,
-      simStderr:      null,
-      simExitCode:    null,
-      durationMs:     totalDurationMs,
-      testcaseResults: verdicts.map(v => ({
-        id:          v.testcaseId,
-        description: v.description,
-        passed:      v.passed,
-        expected:    v.expectedOutput,
-        actual:      v.actualOutput || null,
-      })),
-      waveformVcd:    null,
-      xpEarned:       accepted ? problem.xpReward : 0,
-      accepted:       accepted,
-    }).catch(err => console.warn("[useArenaProblem.submit] submission save:", err));
-
-    return sub;
-  }, [runState, problem, designCode, testbenchCode, user?.id]);
+  }, [runState, problem.slug, designCode, testbenchCode, testbenchLanguage, celebrate]);
 
   // ── Reset ─────────────────────────────────────────────────────────────────
   const resetToStarter = useCallback(() => {
     setDesignCode(problem.starterCode);
-    setTestbenchCode(problem.testbenchSkeleton);
+    setVerilogTb(problem.testbenchSkeleton);
+    setCocotbTb(COCOTB_TB_SKELETON);
     setRunState("idle");
     setRunResult(null);
     setSubmission(null);
@@ -265,6 +222,8 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
     testbenchCode,
     setDesignCode,
     setTestbenchCode,
+    testbenchLanguage,
+    setTestbenchLanguage,
     runState,
     isRunning:      runState === "running",
     isSubmitting:   runState === "submitting",

@@ -1,0 +1,90 @@
+/**
+ * GET /api/profile/export — everything BitFlow keeps about you, as a JSON download: account,
+ * XP, progress, submissions (your code, and the testbench only where you wrote it; never the
+ * hidden tests or their results), projects with their history, share links, certificates,
+ * comments and classes. Never your password or sessions. Rate limited.
+ */
+
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
+import { audit } from "@/lib/privacy-server";
+
+export const dynamic = "force-dynamic";
+
+const MAX_SUBMISSIONS = 5000;   // the most recent; a very busy account says so in the file
+const parse = (json: string | null) => { try { return json ? JSON.parse(json) : null; } catch { return json; } };
+
+export async function GET(request: Request) {
+  const me = await getSessionUser();
+  if (!me) return NextResponse.json({ error: "Sign in to download your data." }, { status: 401 });
+  const { success } = await rateLimit(request, { limit: 3, windowMs: 60 * 60_000, prefix: "export", key: `user:${me.id}` });
+  if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
+
+  const id = me.id;
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks, oauth, xpLog, live] = await Promise.all([
+    prisma.user.findUnique({ where: { id }, select: {
+      username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true,
+      birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
+    prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, streakFreezes: true, lastDailyBonus: true, updatedAt: true } }),
+    prisma.userProgress.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" },
+      select: { solved: true, attempts: true, firstSolvedAt: true, xpEarned: true, question: { select: { slug: true, title: true } } } }),
+    prisma.submission.findMany({ where: { userId: id }, orderBy: { createdAt: "desc" }, take: MAX_SUBMISSIONS + 1,
+      select: { createdAt: true, submissionType: true, language: true, accepted: true, numTestsPassed: true, numTestsTotal: true,
+                xpEarned: true, gateCount: true, logicDepth: true, fmaxMhz: true, designCode: true, testbenchCode: true,
+                question: { select: { slug: true, title: true, problemType: true } } } }),
+    prisma.project.findMany({ where: { ownerId: id }, orderBy: { createdAt: "asc" },
+      select: { name: true, designCode: true, testbenchCode: true, files: true, designLanguage: true, testbenchLanguage: true, pins: true, createdAt: true, updatedAt: true,
+                versions: { orderBy: { createdAt: "asc" }, select: { createdAt: true, message: true, designCode: true, testbenchCode: true, files: true, designLanguage: true, testbenchLanguage: true, pins: true } } } }),
+    prisma.sharedDesign.findMany({ where: { ownerId: id }, select: { id: true, title: true, designCode: true, testbenchCode: true, files: true, createdAt: true } }),
+    prisma.certificate.findMany({ where: { userId: id }, select: { id: true, track: true, issuedAt: true } }),
+    prisma.comment.findMany({ where: { userId: id }, select: { body: true, hidden: true, createdAt: true, question: { select: { slug: true } } } }),
+    prisma.classMember.findMany({ where: { userId: id }, select: { role: true, joinedAt: true, classroom: { select: { name: true } } } }),
+    prisma.classroom.findMany({ where: { ownerId: id }, select: { name: true, joinCode: true, createdAt: true } }),
+    prisma.guardianConsent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { guardianName: true, relationship: true, allowAi: true, createdAt: true } }),
+    prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
+    prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
+    prisma.mockInterview.findMany({ where: { userId: id }, orderBy: { startedAt: "asc" }, select: { problems: true, startedAt: true, endsAt: true, finishedAt: true } }),
+    prisma.oAuthAccount.findMany({ where: { userId: id }, select: { provider: true, providerAccountId: true, createdAt: true } }),
+    prisma.xpEvent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { amount: true, source: true, createdAt: true } }),
+    prisma.liveSnapshot.findMany({ where: { userId: id }, select: { files: true, run: true, note: true, joinedAt: true, updatedAt: true, lab: { select: { classroom: { select: { name: true } } } } } }),
+  ]);
+  if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
+  await audit(id, "data.exported", id);
+
+  const { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nomineeName, nomineeContact, ...account } = user;
+  const data = {
+    exportedAt: new Date().toISOString(),
+    site: "bitflowvlsi.tech",
+    account,
+    connectedAccounts: oauth,   // Google/GitHub sign-in: only the provider's account id is kept
+    privacy: { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nominee: nomineeName ? { name: nomineeName, contact: nomineeContact } : null,
+               parentConsents: guardians, events },
+    xp,
+    xpLog,      // each XP award since the log began (problems, lessons, daily bonus, quests)
+    liveLabs: live.map(({ lab, files, run, ...l }) => ({ class: lab.classroom.name, ...l, files: parse(files), run: parse(run) })),   // deleted when the lab ends
+    lessons,
+    progress: progress.map(({ question, ...p }) => ({ problem: question.slug, title: question.title, ...p })),
+    submissions: submissions.slice(0, MAX_SUBMISSIONS).map(({ question, testbenchCode, ...s }) => ({
+      problem: question.slug, title: question.title, ...s,
+      // The testbench is yours only on testbench and formal problems; elsewhere it is the problem's.
+      ...(question.problemType === "testbench" || question.problemType === "formal" ? { testbenchCode } : {}),
+    })),
+    ...(submissions.length > MAX_SUBMISSIONS ? { submissionsNote: `Only your ${MAX_SUBMISSIONS} most recent submissions are included.` } : {}),
+    projects: projects.map((p) => ({ ...p, files: parse(p.files), pins: parse(p.pins), versions: p.versions.map((v) => ({ ...v, files: parse(v.files), pins: parse(v.pins) })) })),
+    shareLinks: shares.map((s) => ({ ...s, url: `/s/${s.id}`, files: parse(s.files) })),
+    certificates: certificates.map((c) => ({ ...c, url: `/c/${c.id}` })),
+    comments: comments.map(({ question, ...c }) => ({ problem: question.slug, ...c })),
+    mockInterviews: mocks.map((m) => ({ ...m, problems: parse(m.problems) })),
+    classes: { member: memberships.map((m) => ({ name: m.classroom.name, role: m.role, joined: m.joinedAt })), teaching: owned },
+  };
+  const date = new Date().toISOString().slice(0, 10);
+  return new NextResponse(JSON.stringify(data, null, 2), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="bitflow-${user.username}-${date}.json"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}

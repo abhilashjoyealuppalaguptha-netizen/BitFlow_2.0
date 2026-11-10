@@ -8,6 +8,8 @@
 
 import type { ArenaProblem, ArenaCategory, ArenaDifficulty } from "./types";
 import { FSM_PROBLEMS } from "./fsm";
+// Parked while the problem set is revised (2026-11): verification, formal, timing, practice, combinational,
+// sequential and protocol sets. Their files stay; prisma/seed.ts archives their rows.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flat registry — all arena problems across all categories
@@ -15,9 +17,6 @@ import { FSM_PROBLEMS } from "./fsm";
 
 export const ALL_ARENA_PROBLEMS: ArenaProblem[] = [
   ...FSM_PROBLEMS,
-  // TODO: ...COMBINATIONAL_PROBLEMS,
-  // TODO: ...SEQUENTIAL_PROBLEMS,
-  // TODO: ...PROTOCOL_PROBLEMS,
 ];
 
 /** O(1) slug lookup */

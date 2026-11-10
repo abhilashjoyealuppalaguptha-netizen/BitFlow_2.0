@@ -13,14 +13,15 @@ uvicorn[standard]>=0.29.0,<1.0.0  # ASGI server (includes websockets + httptools
 pydantic>=2.7.0,<3.0.0            # data validation (used for models + config)
 pydantic-settings>=2.2.0,<3.0.0  # settings management with env / .env support
 PyJWT>=2.8.0,<3.0.0                 # JSON Web Token encoding / decoding
+cryptography>=42.0.0              # ES256 (JWT_PUBLIC_KEY mode)
 
 # ── Docker integration ────────────────────────────────────────────────────────
-# docker SDK removed — simulations now run natively via subprocess (Railway-compatible)
+# docker SDK removed — simulations now run natively via subprocess
+
+# ── Python testbenches ────────────────────────────────────────────────────────
+cocotb==2.1.0                     # exact pin: api/langs.py drives its VPI library directly
 
 # ── Multipart upload support ──────────────────────────────────────────────────
 python-multipart>=0.0.9           # required for UploadFile endpoints
 
-# ── Testing ───────────────────────────────────────────────────────────────────
-pytest>=8.0.0                     # test runner
-pytest-asyncio>=0.23.0            # async test support
-httpx>=0.27.0                     # async HTTP client used by FastAPI TestClient
+# Test-only packages (pytest, httpx) are in requirements-dev.txt, kept out of the image.

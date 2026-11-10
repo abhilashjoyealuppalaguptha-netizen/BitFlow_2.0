@@ -6,6 +6,11 @@ import ScrollUnlock from "../../components/ScrollUnlock";
 import AuthGate from "../../components/AuthGate";
 import VLSIRoadmap from "@/components/VLSIRoadmap";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
+import { prewarmSimulator } from "@/lib/sim-status";
+import { groupIntoModules, BEGINNER_MODULE_DEFS, INTERMEDIATE_MODULE_DEFS, ADVANCED_MODULE_DEFS } from "@/lib/problems/modules";
+import SiteHeader from "@/components/SiteHeader";
+import PixelLoader from "@/components/pixel/PixelLoader";
+import PixelEmpty from "@/components/pixel/PixelEmpty";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Visual config mapping
@@ -46,139 +51,6 @@ const LEVEL_CONFIG: Record<string, {
     locked: "border-danger/10 bg-danger/3 text-danger/30",
   },
 };
-
-const BEGINNER_MODULE_DEFS = [
-  {
-    id:            "mod_logic_gates",
-    title:         "Logic Gates",
-    description:   "AND, OR, NOT, XOR — the building blocks of digital design.",
-    icon:          "⊕",
-    prerequisites: [],
-    xpToUnlock:    0,
-  },
-  {
-    id:            "mod_combinational",
-    title:         "Combinational Circuits",
-    description:   "Circuits whose output depends only on current inputs.",
-    icon:          "⊞",
-    prerequisites: ["mod_logic_gates"],
-    xpToUnlock:    50,
-  },
-  {
-    id:            "mod_sequential_basics",
-    title:         "Sequential Basics",
-    description:   "Flip-flops and registers — circuits with memory.",
-    icon:          "⊿",
-    prerequisites: ["mod_combinational"],
-    xpToUnlock:    100,
-  },
-];
-
-const INTERMEDIATE_MODULE_DEFS = [
-  {
-    id:            "mod_latches",
-    title:         "Latches",
-    description:   "Level-sensitive storage: SR Latch and D Latch.",
-    icon:          "⊡",
-    prerequisites: [],
-    xpToUnlock:    0,
-  },
-  {
-    id:            "mod_flip_flops",
-    title:         "Flip-Flops",
-    description:   "Edge-triggered storage: SR, JK, D, and T flip-flops.",
-    icon:          "⏚",
-    prerequisites: ["mod_latches"],
-    xpToUnlock:    100,
-  },
-  {
-    id:            "mod_shift_registers",
-    title:         "Shift Registers",
-    description:   "SISO, SIPO, PISO, PIPO, bidirectional, and universal registers.",
-    icon:          "⇄",
-    prerequisites: ["mod_flip_flops"],
-    xpToUnlock:    200,
-  },
-  {
-    id:            "mod_sequential_design",
-    title:         "Counters & Sequential Design",
-    description:   "Synchronous counters, frequency dividers, and state machines.",
-    icon:          "◑",
-    prerequisites: ["mod_shift_registers"],
-    xpToUnlock:    300,
-  },
-  {
-    id:            "mod_flip_flops_ext",
-    title:         "Flip-Flops Extended",
-    description:   "Advanced flip-flop variants and configurations.",
-    icon:          "⏛",
-    prerequisites: ["mod_sequential_design"],
-    xpToUnlock:    400,
-  },
-  {
-    id:            "mod_sequential_utils",
-    title:         "Sequential Utilities",
-    description:   "Edge detectors, synchronizers, and pipeline utilities.",
-    icon:          "⟳",
-    prerequisites: ["mod_flip_flops_ext"],
-    xpToUnlock:    500,
-  },
-  {
-    id:            "mod_counters_advanced",
-    title:         "Advanced Counters",
-    description:   "Up/down, modulo, and Gray code counters.",
-    icon:          "⊞",
-    prerequisites: ["mod_sequential_utils"],
-    xpToUnlock:    600,
-  },
-  {
-    id:            "mod_memory",
-    title:         "Memory Elements",
-    description:   "RAM, ROM, FIFOs and memory-mapped designs.",
-    icon:          "▦",
-    prerequisites: ["mod_counters_advanced"],
-    xpToUnlock:    700,
-  },
-];
-
-const ADVANCED_MODULE_DEFS = [
-  {
-    id:            "mod_fsm_basics",
-    title:         "Finite State Machines: The Control Fabric",
-    description:   "Moore vs Mealy FSMs, sequence detection, state diagrams.",
-    icon:          "⟳",
-    prerequisites: ["mod_memory"],
-    xpToUnlock:    800,
-  },
-  {
-    id:            "mod_fsm_advanced",
-    title:         "Complex FSM Systems: Protocol Controllers",
-    description:   "SPI, I²C, arbiters, clock domain crossing, PWM.",
-    icon:          "⚡",
-    prerequisites: ["mod_fsm_basics"],
-    xpToUnlock:    1000,
-  },
-  {
-     id:            "mod_capstone",
-     title:         "Capstone Problems: Interview Tier",
-     prerequisites: ["mod_fsm_advanced"],
-     xpToUnlock:    1200,
-     description:   "Design a complete system from scratch, with multiple modules and FSMs.",
-  },
-];
-
-// Helper to group flat problems into modules
-function groupIntoModules(
-  problems: Problem[],
-  moduleDefinitions: any[],
-): PathModule[] {
-  return moduleDefinitions.map((def) => ({
-    ...def,
-    problems: problems
-      .filter((p) => p.moduleId === def.id)
-      .sort((a, b) => a.orderIndex - b.orderIndex),
-  }));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
@@ -389,25 +261,23 @@ function LevelSection({
         {isArena && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="font-mono text-4xl mb-3 text-danger/30">⚔</div>
-            <h3 className="font-mono text-[14px] text-danger/60 font-bold mb-1">
-              Arena Mode
+            <h3 className="font-mono text-[14px] text-danger/80 font-bold mb-1">
+              Arena
             </h3>
-            <p className="font-mono text-[10px] text-dim/60 max-w-xs leading-relaxed">
-              Timed competitive challenges unlock after completing the Advanced tier.
-              Ranking, contests, and leaderboards coming soon.
+            <p className="font-mono text-[11px] text-ghost max-w-xs leading-relaxed">
+              Harder problems by topic: FSMs, testbenches graded against bugs, formal proofs, timing closure and find-the-bug.
+              Timed contests and the leaderboard are open too.
             </p>
-            <div className="mt-4 font-mono text-[9px] text-danger/40 border border-danger/20 px-4 py-2 rounded">
-              🔒 Locked until Advanced completion · 1,000 XP required
+            <div className="mt-4 flex flex-wrap justify-center gap-2 font-mono text-[11px]">
+              <Link href="/arena" className="px-4 py-2 rounded border border-danger/40 text-danger hover:bg-danger/10">Open the Arena →</Link>
+              <Link href="/contests" className="px-4 py-2 rounded border border-rim text-ghost hover:text-bright">Contests</Link>
+              <Link href="/leaderboard" className="px-4 py-2 rounded border border-rim text-ghost hover:text-bright">Leaderboard</Link>
             </div>
           </div>
         )}
 
         {!isArena && isEmpty && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="font-mono text-[10px] text-dim/50">
-              Problems coming soon.
-            </div>
-          </div>
+          <PixelEmpty title="Nothing here yet" action={<Link href="/problems" className="text-ghost hover:text-bright">Browse all problems →</Link>} />
         )}
 
         {!isArena && level.modules.map((mod) => (
@@ -435,8 +305,11 @@ export default function LearnPage() {
   const [activeTab, setActiveTab] = useState<"curriculum" | "roadmap">("curriculum");
 
   useEffect(() => {
-    document.title = activeTab === "roadmap" ? "VLSI Career Roadmap — BitFlow" : "Learn — BitFlow";
-    
+    document.title = activeTab === "roadmap" ? "VLSI Career Roadmap · BitFlow" : "Learning path · BitFlow";   // same as layout metadata
+  }, [activeTab]);
+
+  useEffect(() => {
+    prewarmSimulator();
     Promise.all([
       fetch("/api/problems").then((r) => r.json()),
       fetch("/api/progress").then((r) => r.json()),
@@ -447,7 +320,7 @@ export default function LearnPage() {
       })
       .catch((err) => console.error("Error loading dynamic curriculum:", err))
       .finally(() => setLoading(false));
-  }, [activeTab]);
+  }, []);
 
 
   const beginnerQuestions = questions.filter(
@@ -508,40 +381,11 @@ const advancedQuestions = questions.filter(
       <ScrollUnlock />
       
       {/* Nav */}
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 group">
-            <img
-              src="/bitflow_logo_2.png"
-              alt="BitFlow"
-              className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
-            />
-            <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
-          </Link>
-          <span className="text-rim">·</span>
-          <span className="font-mono text-[11px] text-ghost">Learning Path</span>
-        </div>
-
-        <div className="flex items-center gap-5 font-mono text-[11px]">
-          {progress && (
-            <div className="text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 backdrop-blur-md rounded-full px-3 py-1">
-              🏆 {progress.totalXp} XP
-            </div>
-          )}
-          <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
-            Dashboard
-          </Link>
-          <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
-            Sandbox
-          </Link>
-          <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
-            Arena
-          </Link>
-          <Link href="/academy" className="text-ghost hover:text-bright transition-colors">
-            Academy
-          </Link>
-        </div>
-      </header>
+      <SiteHeader>
+        {progress && (
+          <span className="hidden sm:inline text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 rounded-full px-3 py-1">🏆 {progress.totalXp} XP</span>
+        )}
+      </SiteHeader>
 
       {/* Hero */}
       <div className="relative px-6 py-10 border-b border-rim/30">
@@ -597,12 +441,9 @@ const advancedQuestions = questions.filter(
       <main className="max-w-5xl w-full mx-auto px-6 py-8 flex-1">
         {activeTab === "curriculum" ? (
           loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
-              <p className="font-mono text-[11px] text-dim">Loading curriculum schema registry...</p>
-            </div>
+            <PixelLoader size="lg" label="Loading the curriculum…" />
           ) : (
-            <div className="space-y-8 animate-pulse_once max-w-4xl mx-auto">
+            <div className="space-y-8 anim-fade max-w-4xl mx-auto">
               {levels.map((level) => (
                 <LevelSection key={level.id} level={level} progress={progress} />
               ))}

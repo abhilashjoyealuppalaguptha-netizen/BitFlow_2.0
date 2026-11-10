@@ -60,6 +60,8 @@ export type ProblemCategory =
   | "arithmetic"       // ALUs, multipliers, dividers
   | "interface"        // UART, SPI, I2C protocols (future)
   | "pipeline"         // Pipelined datapaths (advanced)
+  | "riscv"            // RISC-V CPU project track (lib/problems/riscv.ts)
+  | "systemverilog"    // SystemVerilog Essentials (lib/problems/systemverilog.ts)
   | "verification";    // Testbench writing and assertion-based verification
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +165,8 @@ export interface Problem {
    * Must print "ALL TESTS PASSED" on success, "FAIL: ..." lines on failure.
    */
   hiddenTestbench?: string;
+  /** Extra input files the simulator puts next to design.v (e.g. a $readmemh hex file). */
+  dataFiles?: Record<string, string> | null;
   /**
    * Public testcases — shown to user as examples.
    */
@@ -264,8 +268,16 @@ export interface SubmissionResult {
   submittedCode:  string;
   /** XP earned from this submission (0 if not first solve) */
   xpEarned:       number;
+  /** Your total XP after it (signed in only): shows when a level was crossed */
+  totalXp?:       number | null;
   /** Compile or runtime error message, if any */
   errorMessage?:  string;
+  /** Your design's own signals on the first failing hidden test (wrong answers only). */
+  failingWaveform?: import("@/lib/grading").FailingWaveform | null;
+  /** Shortest input sequence where the design and the reference solution differ. */
+  counterexample?: import("@/lib/grading").Counterexample | null;
+  /** Optimization scores of an accepted design. */
+  metrics?: { gates: number; depth: number; ffBits: number } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -20,6 +20,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { RunState, SimulateResponse } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
+import { PaletteButton } from "@/components/CommandPalette";
+import { NavMenuButton } from "@/components/SiteHeader";
+import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface ToolbarProps {
   runState:       RunState;
@@ -29,6 +32,17 @@ interface ToolbarProps {
   isAIOpen:       boolean;
   /** Toggle the AI assistant panel */
   onAIToggle:     () => void;
+  /** Opens the Yosys synthesis panel. */
+  onSynthesize?:  () => void;
+  onReport?:      () => void;
+  /** Opens the virtual board (gate-level simulation in the browser). */
+  onBoard?:       () => void;
+  /** Opens formal verification (assertions proved by a solver). */
+  onProve?:       () => void;
+  /** Opens ASIC analysis (Sky130 area, timing, power, gate-level simulation). */
+  onAsic?:        () => void;
+  /** Saves the design as a read-only share link (/s/[id]). */
+  onShare?:       () => void;
   /** Download project ZIP — only shown when result exists */
   onExportZip?:   () => void;
   /** Export snapshot PNG — only shown when result exists */
@@ -44,15 +58,7 @@ interface ToolbarProps {
 /** Animated dots shown inside the button while running. */
 function RunningIndicator() {
   return (
-    <span className="flex items-center gap-[3px]">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1 h-1 rounded-full bg-current animate-pulse_soft"
-          style={{ animationDelay: `${i * 0.2}s` }}
-        />
-      ))}
-    </span>
+    <PixelSpinner size={12} />
   );
 }
 
@@ -76,6 +82,12 @@ export default function Toolbar({
   onRun,
   isAIOpen,
   onAIToggle,
+  onSynthesize,
+  onReport,
+  onBoard,
+  onProve,
+  onAsic,
+  onShare,
   onExportZip,
   onExportImage,
   isExporting = false,
@@ -87,15 +99,16 @@ export default function Toolbar({
   return (
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-void/70 backdrop-blur-xl border-b border-rim/50 z-10">
       {/* ── Left: branding + nav ───────────────────────────────────────── */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 min-w-0 overflow-hidden">
+        <NavMenuButton />
         {/* BitFlow mark */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <img
-            src="/bitflow_logo_2.png"
+            src="/bitflow_logo_64.png"
             alt="BitFlow"
             className="w-7 h-7 object-contain rounded opacity-90"
           />
-          <div className="flex flex-col leading-none">
+          <div className="hidden lg:flex flex-col leading-none">
             <span className="font-display text-[13px] font-semibold text-bright tracking-wide">
               BitFlow
             </span>
@@ -106,22 +119,28 @@ export default function Toolbar({
         </div>
 
         {/* ── Nav links ─────────────────────────────────────────────────── */}
-        <nav className="hidden sm:flex items-center gap-1">
+        {/* The editor controls on the right come first: links appear as width allows (main ones from xl, the rest from 2xl); all are in the palette (Ctrl K). */}
+        <nav className="hidden lg:flex items-center gap-1 min-w-0">
           {[
             ...(pathname.startsWith("/sandbox") ? [] : [{ href: "/sandbox", label: "Sandbox" }]),
             { href: "/dashboard", label: "Dashboard" },
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
-            { href: "/academy", label: "Academy" },
-            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
-          ].map(({ href, label }) => {
+            { href: "/lab", label: "Lab" },
+            { href: "/academy", label: "Academy", wide: true },
+            { href: "/studio", label: "Studio", wide: true },
+            { href: "/classes", label: "Classes", wide: true },
+            { href: "/contests", label: "Contests", wide: true },
+            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin", wide: true }] : []),
+          ].map(({ href, label, wide }) => {
             const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
                 className={[
-                  "px-2.5 py-1 rounded-lg font-mono text-[11px] tracking-wide transition-colors duration-100",
+                  "px-2.5 py-1 rounded-lg font-mono text-[11px] tracking-wide transition-colors duration-100 whitespace-nowrap",
+                  wide ? "hidden 2xl:inline-block" : "hidden xl:inline-block",
                   active
                     ? "bg-phosphor/10 backdrop-blur-sm text-phosphor border border-phosphor/30"
                     : "text-ghost hover:text-pale hover:bg-pit/40",
@@ -131,11 +150,12 @@ export default function Toolbar({
               </Link>
             );
           })}
+          <PaletteButton className="ml-1" />
         </nav>
       </div>
 
       {/* ── Right: controls ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {/* Duration from last run */}
         {result && <DurationChip ms={result.duration_ms} />}
 
@@ -200,6 +220,66 @@ export default function Toolbar({
         {/* Divider */}
         <div className="w-px h-4 bg-rim mx-1" />
 
+        {onReport && (
+          <button
+            onClick={onReport}
+            title="Lab report: code, simulation output, waveform and synthesis, ready to print or save as PDF"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-info/40 hover:text-info/80 transition-all duration-150"
+          >
+            Report
+          </button>
+        )}
+
+        {onSynthesize && (
+          <button
+            onClick={onSynthesize}
+            title="Synthesize with Yosys: cells, latches, schematic, FSM diagram"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Synth
+          </button>
+        )}
+
+        {onBoard && (
+          <button
+            onClick={onBoard}
+            title="Run the design on a virtual board: switches, buttons, LEDs, 7-segment"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Board
+          </button>
+        )}
+
+        {onProve && (
+          <button
+            onClick={onProve}
+            title="Formal verification: prove your assertions hold for every input, or get a counterexample"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Prove
+          </button>
+        )}
+
+        {onAsic && (
+          <button
+            onClick={onAsic}
+            title="As a chip: area, Fmax, timing slack and power on the SkyWater 130 nm process, and your testbench on the gates"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            ASIC
+          </button>
+        )}
+
+        {onShare && (
+          <button
+            onClick={onShare}
+            title="Copy a read-only link to this design that anyone can open and fork"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Share
+          </button>
+        )}
+
         {/* ── AI toggle button ────────────────────────────────────────── */}
         <button
           onClick={onAIToggle}
@@ -227,8 +307,8 @@ export default function Toolbar({
         {/* User profile info & logout */}
         {user && (
           <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] text-ghost/85 font-mono">{user.username}</span>
-            <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+            <span className="hidden 2xl:inline text-[10px] text-ghost/85 font-mono">{user.username}</span>
+            <span className={`hidden 2xl:inline text-[9px] font-mono border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
               user.role === "ADMIN" 
                 ? "border-info/30 bg-info/15 text-info font-bold" 
                 : "border-phosphor/30 bg-phosphor/10 text-phosphor"

@@ -17,13 +17,46 @@ model User {
   username    String         @unique
   password    String
   role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
+  recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
+  publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
+  bannedAt         DateTime? // set by an admin: signed out and can't sign in (lib/auth-utils.ts)
+  usernamePending  Boolean   @default(false) // made by Google/GitHub sign-in: picks a username at the first prompt
+  oauthAccounts    OAuthAccount[]
   createdAt   DateTime       @default(now())
+
+  // DPDP (lib/privacy.ts). Month and year of birth only: enough to tell whether a parent must consent.
+  birthYear         Int?
+  birthMonth        Int?      // 1-12
+  guardianStatus    String    @default("none") // "none" (adult) | "pending" | "granted"
+  guardianAllowAi   Boolean   @default(false)  // the parent allowed the AI tutor
+  // sha256 of the parent link's token (24 random bytes, so an index is enough: a unique
+  // constraint makes `prisma db push` stop on a data-loss warning for existing rows)
+  guardianTokenHash String?
+  guardianTokenExp  DateTime? // the link's expiry before a parent has consented; null after
+  consentVersion    String?   // lib/privacy.ts CONSENT_VERSION accepted; null = asked at next visit
+  consentAt         DateTime?
+  nomineeName       String?   // the person who may exercise this user's rights (DPDP s.14)
+  nomineeContact    String?
+  guardianConsents  GuardianConsent[]
 
   // Relations
   progress    UserProgress[]
   xp          UserXp?
   submissions Submission[]
   sessions    Session[]
+  ownedClasses     Classroom[]   @relation("OwnedClasses")
+  classMemberships ClassMember[]
+  sharedDesigns    SharedDesign[]
+  projects         Project[]
+  certificates     Certificate[]
+  comments         Comment[]
+  announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
+  lessonProgress   LessonProgress[]
+  xpEvents         XpEvent[]
+  liveSnapshots    LiveSnapshot[]
+  mockInterviews   MockInterview[]
+
+  @@index([guardianTokenHash])
 }
 
 // ============================================================================
@@ -47,6 +80,7 @@ model Question {
   examples            String   // JSON stringified ProblemExample[]
   hints               String   // JSON stringified Hint[]
   solutionExplanation String?  // Markdown
+  editorial           String?  // Markdown by an admin; shown only to solvers (lib/discussion.ts)
 
   // Code
   starterCode         String
@@ -54,6 +88,11 @@ model Question {
   publicTestbench     String
   hiddenTestcases     String   // JSON stringified Testcase[]
   hiddenTestbench     String?
+  dataFiles           String?  // JSON {filename: content}: extra input files, e.g. a $readmemh hex file
+  referenceSolution   String?  // Verified correct design (testbench problems: model testbench); never sent to clients
+  problemType         String   @default("design") // "design" | "testbench" (student writes tb.v for a given DUT)
+  mutants             String?  // testbench problems: JSON Mutant[] (lib/mutants.ts) the model testbench catches; never sent to clients
+  unlockAfter         String?  // slug that must be solved first: a "find the bug" problem is one edit from that problem's answer (lib/unlock.ts)
   publicTestcases     String   // JSON stringified Testcase[]
 
   // Evaluation
@@ -64,6 +103,10 @@ model Question {
   xpReward            Int      @default(300)
   xpBonusNoHints      Int?
 
+  // Admin (app/api/admin/problems/[slug])
+  archived            Boolean  @default(false)  // hidden from learners; submissions are kept
+  adminEditedAt       DateTime?                 // set when an admin edits it: the seed then leaves this row alone
+
   // Timestamps
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -71,6 +114,7 @@ model Question {
   // Relations
   progress            UserProgress[]
   submissions         Submission[]
+  comments            Comment[]
 }
 
 // ============================================================================
@@ -109,9 +153,28 @@ model UserXp {
   userId          String   @unique
   totalXp         Int      @default(0)
   unlockedModules String   @default("[\"mod_logic_gates\", \"mod_arithmetic\"]")
+  lastDailyBonus  String?  // UTC date (YYYY-MM-DD) the daily-challenge bonus was last awarded
+  dailyStreak     Int      @default(0) // consecutive days the daily bonus was claimed, as of lastDailyBonus
+  streakFreezes   Int      @default(0) // missed days the streak can survive (lib/daily.ts: one per 7-day run, at most 2)
   updatedAt       DateTime @updatedAt
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One row per XP award, for the weekly leaderboard and daily quests (lib/xp.ts). `source` names
+/// what earned it (problem:<id>, lesson:<kind>:<slug>, daily:<day>, quest:<day>:<id>); unique per
+/// user, so the same reward is never logged twice. XP from before this table isn't in it.
+model XpEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Int
+  source    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source])
+  @@index([createdAt])
 }
 
 // ============================================================================
@@ -126,6 +189,7 @@ model Submission {
   // The code user wrote
   designCode      String   // design.v content
   testbenchCode   String   // tb.v content (either public or user-written)
+  language        String   @default("verilog") // of the code the learner wrote: "verilog" | "vhdl" | "python" (cocotb)
 
   // Run type
   submissionType  String   @default("RUN") // "RUN" | "SUBMIT"
@@ -150,6 +214,17 @@ model Submission {
   xpEarned        Int      @default(0)
   accepted        Boolean  @default(false) // True if ALL hidden testcases pass
 
+  // Optimization scores of accepted SUBMITs (Yosys, 2-input gates + muxes)
+  gateCount       Int?
+  logicDepth      Int?
+  ffBits          Int?
+  fmaxMhz         Float?   // timing problems (lib/arena/timing.ts): place-and-route Fmax on an iCE40-HX8K
+  areaUm2         Float?   // standard-cell area on Sky130 HD (POST /metrics), for the smallest-chip leaderboard
+
+  // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
+  // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.
+  counterexample  String?
+
   // Timestamps
   createdAt       DateTime @default(now())
 
@@ -161,11 +236,27 @@ model Submission {
   @@index([problemId])
   @@index([createdAt])
   @@index([accepted])
+  @@index([problemId, accepted, gateCount])
 }
 
 // ============================================================================
 // SESSIONS (HTTP-only cookie auth)
 // ============================================================================
+
+// A Google or GitHub account that signs in to a BitFlow account (lib/oauth.ts). Only the
+// provider's account id is kept: no email, name or picture.
+model OAuthAccount {
+  id                String   @id @default(uuid())
+  provider          String   // "google" | "github"
+  providerAccountId String   // Google "sub", GitHub numeric id
+  userId            String
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+}
 
 model Session {
   id        String   @id @default(uuid())
@@ -177,4 +268,369 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
+}
+
+// ============================================================================
+// CLASSROOMS — any signed-in user can create a class and teaches it
+// (global User.role is unchanged; class roles live on ClassMember)
+// ============================================================================
+
+model Classroom {
+  id          String        @id @default(uuid())
+  name        String
+  joinCode    String        @unique
+  ownerId     String
+  createdAt   DateTime      @default(now())
+
+  owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ClassMember[]
+  assignments Assignment[]
+  liveLab     LiveLab?
+}
+
+/// A running live lab (lib/live-lab.ts): while it exists, students who joined send their Sandbox code and last
+/// run, and the class's teachers see them. Ending the lab deletes the row and, with it, every snapshot.
+model LiveLab {
+  id        String         @id @default(uuid())
+  classId   String         @unique
+  startedBy String
+  startedAt DateTime       @default(now())
+
+  classroom Classroom      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  snapshots LiveSnapshot[]
+}
+
+/// One joined student's latest Sandbox state in a live lab, and the teacher's note to them.
+model LiveSnapshot {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  files     String   @default("[]")  // JSON [{name, content}]: design, testbench, extra files
+  run       String?                  // JSON {status, passed, total, firstError}: the last run (lib/live-lab.ts runSummary)
+  note      String?                  // from the teacher
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lab       LiveLab  @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, userId])
+  @@index([userId])
+}
+
+model ClassMember {
+  id        String    @id @default(uuid())
+  classId   String
+  userId    String
+  role      String    @default("STUDENT") // "TEACHER" | "STUDENT"
+  joinedAt  DateTime  @default(now())
+
+  classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+}
+
+model Assignment {
+  id           String    @id @default(uuid())
+  classId      String
+  title        String
+  dueAt        DateTime
+  problemSlugs String    // JSON stringified string[] (Question.slug)
+  createdAt    DateTime  @default(now())
+
+  classroom    Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+}
+
+// ============================================================================
+// SHARED SANDBOX DESIGNS — read-only links (/s/[id]) anyone can open and fork
+// ============================================================================
+
+model SharedDesign {
+  id            String   @id                 // short random slug, e.g. "k3Fq9xZp"
+  ownerId       String
+  title         String
+  designCode    String
+  testbenchCode String
+  files         String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
+  kind          String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
+  designLang    String   @default("verilog")  // "verilog" | "vhdl"
+  tbLang        String   @default("verilog")  // "verilog" | "vhdl" | "python" (cocotb)
+  public        Boolean  @default(false)      // listed in /explore; the link works either way
+  forkOf        String?                       // the share it was forked from (credit on its page)
+  forks         Int      @default(0)          // times it was forked into someone's projects
+  projectId     String?                       // the owner's project it was shared from: sharing it again updates this link
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt   // the owner can update the code; the link stays the same
+
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([public, forks])
+  @@index([ownerId, projectId])
+}
+
+// ============================================================================
+// PROJECTS — a user's saved Sandbox work (app/api/projects), with its versions
+// ============================================================================
+
+model Project {
+  id                String   @id @default(uuid())
+  ownerId           String
+  name              String
+  designCode        String
+  testbenchCode     String
+  files             String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
+  designLanguage    String   @default("verilog")
+  testbenchLanguage String   @default("verilog")
+  pins              String?  // JSON {"<board>:<top>": constraints text} (components/BitstreamTab.tsx)
+  forkOf            String?  // the shared design (/s/<id>) this project was forked from
+  kind              String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  versions          ProjectVersion[]
+
+  @@index([ownerId, updatedAt])
+}
+
+// A saved state of a project; autosaves within a couple of minutes share one (lib/projects.ts).
+model ProjectVersion {
+  id                String   @id @default(uuid())
+  projectId         String
+  designCode        String
+  testbenchCode     String
+  files             String?
+  designLanguage    String   @default("verilog")
+  testbenchLanguage String   @default("verilog")
+  pins              String?
+  message           String?  // "Saved by you", "Restored ...": set by an explicit save
+  createdAt         DateTime @default(now())
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+// ============================================================================
+// CONTESTS — timed sets of existing problems; standings are computed from
+// SUBMIT rows inside [startsAt, endsAt)
+// ============================================================================
+
+model Contest {
+  id           String   @id @default(uuid())
+  title        String
+  startsAt     DateTime
+  endsAt       DateTime
+  problemSlugs String   // JSON stringified string[] (Question.slug)
+  createdAt    DateTime @default(now())
+
+  @@index([startsAt])
+}
+
+// ============================================================================
+// ANALYTICS — cookieless, aggregated page views. No IPs, users or devices:
+// one counter per (day, page, referring site). See app/api/analytics.
+// ============================================================================
+
+model PageView {
+  id       String @id @default(uuid())
+  day      String // "YYYY-MM-DD" (UTC)
+  path     String // pathname; ids collapsed to ":id"
+  referrer String // referring site's host; "" = direct or from this site
+  count    Int    @default(0)
+
+  @@unique([day, path, referrer])
+  @@index([day])
+}
+
+// ============================================================================
+// RATE LIMITS — fixed-window counters shared by every server instance
+// (serverless functions don't share memory). See lib/rate-limit.ts.
+// ============================================================================
+
+model RateLimit {
+  key     String   @id // "<prefix>:<user:id | ip:addr | anonymous>"
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
+// ============================================================================
+// ERROR LOG — server and browser errors for the admin page (kept 30 days).
+// No request bodies or user data: where it happened and what was thrown.
+// ============================================================================
+
+// ============================================================================
+// CONTACT — messages from the public form at /contact, read in the admin console
+// (Messages tab). Nothing else is done with them.
+// ============================================================================
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  name      String
+  email     String
+  subject   String
+  message   String
+  handled   Boolean  @default(false)
+  kind      String   @default("general") // "general" | "grievance" (data requests: answer within 90 days)
+  resolvedAt DateTime? // set when handled; the row is deleted a year later (lib/privacy.ts)
+
+  @@index([createdAt])
+}
+
+// ============================================================================
+// DPDP — parent/guardian consent for under-18 accounts, an audit trail kept a
+// year (DPDP Rules: logs of processing), and a site-wide notice (breach response).
+// ============================================================================
+
+// ============================================================================
+// LESSONS — Board Lab lessons and Academy chapters finished on the account
+// (lib/lesson-progress.ts). A row per lesson touched; XP is awarded once.
+// ============================================================================
+
+model LessonProgress {
+  id          String    @id @default(uuid())
+  userId      String
+  kind        String    // "lab" | "academy"
+  slug        String
+  done        Boolean   @default(false)
+  quizScore   Int?      // best quiz score (correct answers), Academy only
+  draft       String?   // the lesson's code as last edited, Lab only
+  hwBoard     String?   // the real board it was verified on (Board Lab "Check on my board")
+  xpAwarded   Int       @default(0)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, slug])
+}
+
+// A timed mock interview (lib/interview.ts). Results come from the user's Submissions in its window.
+model MockInterview {
+  id         String    @id @default(uuid())
+  userId     String
+  problems   String    // JSON stringified string[] (Question.slug)
+  startedAt  DateTime  @default(now())
+  endsAt     DateTime
+  finishedAt DateTime? // set when the learner ends it early
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+}
+
+// What students are told about updates (lib/announcements.ts). Release posts are seeded from
+// content/announcements.ts; breach notices are SiteNotice, not this.
+model Announcement {
+  id            String    @id @default(uuid())
+  title         String
+  body          String
+  kind          String    // lib/announcements.ts ANNOUNCEMENT_KINDS
+  version       String?
+  pinned        Boolean   @default(false)
+  publishedAt   DateTime  @default(now())
+  archived      Boolean   @default(false)
+  adminEditedAt DateTime? // set when an admin writes or edits it: the seed then leaves it alone
+
+  @@index([publishedAt])
+}
+
+model GuardianConsent {
+  id            String    @id @default(uuid())
+  userId        String
+  guardianName  String
+  relationship  String    // "parent" | "guardian"
+  adultDeclared Boolean
+  allowAi       Boolean
+  ipHash        String?   // sha256 of the parent's IP with a server secret: evidence, not tracking
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  actorId   String?  // who did it (null = the system or a parent link)
+  action    String   // e.g. "consent.given", "guardian.granted", "account.deleted", "admin.problem.edit"
+  targetId  String?  // the user/problem/contest it was about
+  detail    String?  // short, no secrets
+
+  @@index([createdAt])
+  @@index([targetId])
+}
+
+model SiteNotice {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  message   String
+  active    Boolean  @default(true)
+}
+
+model ErrorLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  source    String // "server" | "client"
+  location  String // API route label or page path
+  message   String
+  stack     String?
+
+  @@index([createdAt])
+}
+
+// ============================================================================
+// CERTIFICATES — claimed by the learner after solving every problem in a
+// track (lib/tracks.ts); public at /c/<id> so they can be shared and verified.
+// ============================================================================
+
+model Certificate {
+  id       String   @id // short random id used in the public URL
+  userId   String
+  track    String   // lib/tracks.ts TRACKS[].id
+  issuedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, track])
+}
+
+// ============================================================================
+// DISCUSSION (lib/discussion.ts): solvers only; hidden by an admin or after 3 reports
+// ============================================================================
+
+model Comment {
+  id         String   @id @default(uuid())
+  questionId String
+  userId     String
+  body       String   // plain text, at most 2000 characters
+  hidden     Boolean  @default(false)
+  reports    Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  question   Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportedBy CommentReport[]
+
+  @@index([questionId, createdAt])
+  @@index([reports])
+}
+
+model CommentReport {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
 }

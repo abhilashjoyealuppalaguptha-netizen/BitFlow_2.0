@@ -1,0 +1,35 @@
+# Once a day: check that the site and the simulator API answer. When either doesn't, the job
+# fails, and GitHub emails whoever last changed this schedule (Settings > Notifications > Actions).
+# Daily on purpose: checking the simulator wakes the Render instance, and it must not be
+# kept warm around the clock.
+name: Uptime check
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 10:30 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the site and the simulator
+        env:
+          SITE: https://bitflowvlsi.tech
+        run: |
+          problems=""
+          curl -fsS -o /dev/null --max-time 30 "$SITE/" || problems="$problems\n- The home page didn't load."
+          # The simulator sleeps when idle: give it time to wake up (up to ~2 minutes).
+          ok=""
+          for i in 1 2 3 4; do
+            body=$(curl -fsS --max-time 30 "$SITE/api/simulate/health" 2>/dev/null) && ok=1 && break
+            sleep 20
+          done
+          [ -n "$ok" ] || problems="$problems\n- The simulator API (/api/simulate/health) didn't answer."
+          echo "${body:-no answer}"
+          [ -n "$problems" ] || { echo "All good."; exit 0; }
+          printf "Daily uptime check failed:%b\n" "$problems" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 1

@@ -1,0 +1,77 @@
+/**
+ * lib/sim-status.ts — is the simulator (Render free instance(s), sleep after
+ * ~15 min idle) awake? Requests to it go through trackWake(); if one takes a
+ * while and the simulator hasn't answered recently, the status turns "waking"
+ * and components/SimulatorWakeNotice.tsx explains the wait. With several instances
+ * (BACKEND_URLS), the health check behind prewarmSimulator() wakes all of them.
+ */
+
+import { useSyncExternalStore } from "react";
+
+export type SimStatus = "idle" | "waking" | "ready";
+
+const SLOW_MS      = 3_500;       // a cold start shows up as a request still pending after this
+const AWAKE_FOR_MS = 12 * 60_000; // Render sleeps after ~15 min without traffic
+
+let status: SimStatus = "idle";
+let lastOk = 0;
+const listeners = new Set<() => void>();
+
+function set(next: SimStatus) {
+  if (next === status) return;
+  status = next;
+  listeners.forEach((l) => l());
+}
+
+export function useSimStatus(): SimStatus {
+  return useSyncExternalStore(
+    (l) => { listeners.add(l); return () => { listeners.delete(l); }; },
+    () => status,
+    () => "idle",
+  );
+}
+
+/** Did the simulator answer within the last minute? Then a health check would add nothing. */
+export const awakeRecently = () => Date.now() - lastOk < 60_000;
+
+/** Has the simulator answered recently enough that it should still be awake (not cold-starting)? */
+export const simulatorAwake = () => Date.now() - lastOk < AWAKE_FOR_MS;
+
+/**
+ * Should a failed simulation request be sent again? Outages (no response, 502, 503) are
+ * retried. A 504 is retried only when the simulator was asleep, since then it is a cold
+ * start; on an awake simulator it means a long simulation, and running it again would only
+ * repeat the same work. Everything else (4xx, 429 rate limits, 500) is final.
+ */
+export function shouldRetrySimulation(status: number | undefined, wasAwake: boolean): boolean {
+  if (status === undefined || status === 502 || status === 503) return true;
+  return status === 504 && !wasAwake;
+}
+
+/**
+ * Start waking the simulator from a page that usually leads to an editor
+ * (Learn, Arena), without the wake notice, so it gets a head start on its
+ * cold start before the editor's own health check.
+ */
+export function prewarmSimulator(): void {
+  if (awakeRecently()) return;
+  fetch("/api/simulate/health").then((r) => { if (r.ok) lastOk = Date.now(); }, () => {});
+}
+
+/** Await a simulator request, flagging a probable cold start while it's slow. */
+export async function trackWake<T>(request: Promise<T>): Promise<T> {
+  const timer = setTimeout(() => {
+    if (Date.now() - lastOk > AWAKE_FOR_MS) set("waking");
+  }, SLOW_MS);
+  try {
+    const result = await request;
+    lastOk = Date.now();
+    set("ready");
+    return result;
+  } catch (err) {
+    if (status === "waking") set("idle");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { AcademyQuizQuestion } from "@/lib/academy-types";
+import { quizPassed } from "@/lib/academy-progress-storage";
+import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 
 interface Props {
   questions: AcademyQuizQuestion[];
@@ -11,6 +13,7 @@ interface Props {
 export default function QuizPanel({ questions, onComplete }: Props) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  const celebrate = useCelebrate();
 
   const score = questions.reduce((acc, q) => {
     return acc + (answers[q.id] === q.correctIndex ? 1 : 0);
@@ -18,6 +21,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
 
   const handleSubmit = () => {
     setSubmitted(true);
+    if (score === questions.length) celebrate({ kind: "win" });
     onComplete?.(score, questions.length);
   };
 
@@ -34,7 +38,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
             key={q.id}
             className="rounded border border-rim/50 bg-pit/40 p-4 space-y-3"
           >
-            <p className="font-mono text-[11px] text-bright">
+            <p className="text-[14px] text-bright">
               <span className="text-dim mr-2">Q{qi + 1}.</span>
               {q.question}
             </p>
@@ -56,7 +60,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
                     type="button"
                     disabled={submitted}
                     onClick={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}
-                    className={`w-full text-left font-mono text-[10px] px-3 py-2 rounded border transition-colors ${style}`}
+                    className={`w-full text-left text-[14px] px-3 py-2 rounded border transition-colors ${style}`}
                   >
                     <span className="text-dim mr-2">
                       {String.fromCharCode(65 + oi)}.
@@ -68,7 +72,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
             </div>
             {submitted && (
               <p
-                className={`font-mono text-[9px] pt-1 ${
+                className={`text-[13px] leading-relaxed pt-1 ${
                   isCorrect ? "text-phosphor" : "text-warn"
                 }`}
               >
@@ -85,7 +89,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
           type="button"
           disabled={!allAnswered}
           onClick={handleSubmit}
-          className="font-mono text-[11px] px-6 py-2.5 rounded border border-phosphor/50 bg-phosphor/10 text-phosphor hover:bg-phosphor/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="text-[14px] px-6 py-2.5 rounded border border-phosphor/50 bg-phosphor/10 text-phosphor hover:bg-phosphor/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Check Answers
         </button>
@@ -95,7 +99,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
             Score: {score} / {questions.length}
             {score === questions.length
               ? " — Perfect!"
-              : score >= questions.length * 0.7
+              : quizPassed(score, questions.length)
               ? " — Well done!"
               : " — Review the article and try again."}
           </p>

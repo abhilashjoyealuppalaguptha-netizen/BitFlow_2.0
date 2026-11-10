@@ -1,0 +1,104 @@
+/**
+ * POST /api/synthesize — Yosys synthesis of a design, with diagrams.
+ *
+ * Body: { designCode: string, language?: "verilog" | "vhdl", board?: true, fpga?: "ice40" | "xc7" }
+ * Proxies to the backend's POST /synthesize, then draws the schematic and
+ * FSM diagrams here (lib/hardware-diagrams.ts) so the browser gets ready SVG.
+ * With board: true it returns the gate-level netlist for the virtual board instead;
+ * with fpga: "ice40" | "xc7" a resource estimate for that FPGA family.
+ * Open to guests like /api/simulate, and rate-limited the same way.
+ */
+
+import { NextResponse } from "next/server";
+import { boardOnBackend, designAsVerilog, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
+import { rateLimit } from "@/lib/rate-limit";
+import { getSessionUser } from "@/lib/auth-utils";
+import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
+import { reportError } from "@/lib/error-log";
+
+export const dynamic = "force-dynamic";
+
+const MAX_SOURCE_CHARS = 512 * 1024;
+
+export async function POST(request: Request) {
+  const user = await getSessionUser();
+  const { success } = await rateLimit(request, {
+    limit: 15, anonymousLimit: 60, windowMs: 60_000, prefix: "synth",
+    key: user ? `user:${user.id}` : undefined,
+  });
+  if (!success) {
+    return NextResponse.json({ error: "Too many synthesis requests. Please wait a moment." }, { status: 429 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const source = body?.designCode;
+  if (typeof source !== "string" || !source.trim()) {
+    return NextResponse.json({ error: "designCode is required." }, { status: 400 });
+  }
+  if (source.length > MAX_SOURCE_CHARS) {
+    return NextResponse.json({ error: "Source exceeds 512 KB." }, { status: 413 });
+  }
+
+  // A VHDL design ("language": "vhdl") is synthesized from its GHDL Verilog netlist.
+  let designCode: string;
+  try {
+    const converted = await designAsVerilog(source, body.language);
+    if ("error" in converted) return NextResponse.json({ ok: false, error: converted.error });
+    designCode = converted.verilog;
+  } catch (err) {
+    await reportError("[synthesize] backend unreachable:", err);
+    return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
+  }
+
+  let status: number, data: any;
+  if (body.board === true || body.fpga === "ice40" || body.fpga === "xc7") {
+    try {
+      ({ status, data } = await (body.board === true ? boardOnBackend(designCode) : fpgaOnBackend(designCode, body.fpga)));
+    } catch (err) {
+      await reportError("[synthesize] backend unreachable:", err);
+      return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
+    }
+    if (status !== 200) {
+      return NextResponse.json({ error: data?.detail || data?.error || "Synthesis failed." }, { status });
+    }
+    return NextResponse.json(data);
+  }
+
+  // Gate-level scores come from a second, independent Yosys run
+  const metrics = metricsOnBackend(designCode)
+    .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates, depth: data.depth } : null))
+    .catch(() => null);
+  try {
+    ({ status, data } = await synthesizeOnBackend(designCode));
+  } catch (err) {
+    await reportError("[synthesize] backend unreachable:", err);
+    return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
+  }
+  if (status !== 200) {
+    return NextResponse.json({ error: data?.detail || data?.error || "Synthesis failed." }, { status });
+  }
+  if (!data?.ok) {
+    return NextResponse.json({ ok: false, error: data?.error || "Synthesis failed." });
+  }
+
+  // A drawing that fails to lay out shouldn't hide the numbers.
+  const draw = (f: () => Promise<string | null>) => f().catch((err) => {
+    console.warn("[synthesize] diagram failed:", err);
+    return null;
+  });
+  const { netlist, fsms, ...rest } = data as { netlist: any; fsms: FsmInfo[] };
+  const [schematic, fsmDrawings] = await Promise.all([
+    netlist ? draw(() => schematicSvg(netlist)) : Promise.resolve(null),
+    Promise.all(fsms.map((f) => draw(() => fsmSvg(f)))),
+  ]);
+
+  return NextResponse.json({
+    ...rest,
+    gates:          (await metrics)?.gates ?? null,
+    depth:          (await metrics)?.depth ?? null,
+    schematicSvg:   schematic,
+    netlist:        netlist ?? null,          // the interactive schematic (components/SchematicView.tsx)
+    schematicLimit: netlist ? null : "This design is too large to draw as a schematic.",
+    fsms:           fsms.map((f, i) => ({ ...f, svg: fsmDrawings[i] })),
+  });
+}

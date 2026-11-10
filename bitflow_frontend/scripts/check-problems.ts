@@ -1,0 +1,163 @@
+/**
+ * scripts/check-problems.ts — verify every problem in the curriculum is sound.
+ *
+ *   npx tsx scripts/check-problems.ts        (needs iverilog + vvp on PATH)
+ *
+ * For each Learning Path and Arena problem:
+ *   1. starter code compiles with the public testbench and every hidden test
+ *      (iverilog -g2012, same as the simulation API);
+ *   2. starter code does NOT pass the hidden tests (that would be free XP).
+ * Testbench problems instead need at least 5 compiling mutants of their DUT.
+ * And every Sandbox template (lib/templates.ts) compiles, finishes and prints no FAIL.
+ * Reference solutions live in the database and are verified against the
+ * hidden tests when imported (scripts/import-reference-solutions.ts) or saved
+ * from the admin page. Exits 1 if anything fails. Run by the `content` CI job.
+ */
+
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LEARNING_PATH } from "../lib/problems/index";
+import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
+import { sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
+import { TEMPLATES } from "../lib/templates";
+import { combineDesign, dataFiles } from "../lib/project-files";
+import { generateMutants } from "../lib/mutants";
+
+interface HiddenTest { name: string; testbench: string; expected: string | null }
+interface CheckProblem {
+  slug: string; learningLevel: string; expectedOutputMode: string; problemType: string;
+  starterCode: string; publicTestbench: string; hidden: HiddenTest[];
+  files: Record<string, string>;   // extra input files, e.g. a $readmemh hex file
+  timing: boolean;                 // lib/arena/timing.ts: the starter is correct, only too slow
+  verilator: boolean;              // lib/arena/verification-sv.ts: graded on Verilator, not Icarus
+}
+interface RunResult { compiled: boolean; success: boolean; stdout: string; log: string }
+
+function simulate(design: string, testbench: string, files: Record<string, string> = {}): RunResult {
+  const dir = mkdtempSync(join(tmpdir(), "bf-check-"));
+  try {
+    writeFileSync(join(dir, "design.v"), design);
+    writeFileSync(join(dir, "tb.v"), testbench);
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
+    const c = spawnSync("iverilog", ["-g2012", "-o", "a.out", "design.v", "tb.v"],
+      { cwd: dir, encoding: "utf8", timeout: 30_000 });
+    if (c.error) throw c.error;                       // iverilog missing
+    if (c.status !== 0) return { compiled: false, success: false, stdout: "", log: `${c.stdout}${c.stderr}` };
+    // stdin from /dev/null like the API sandbox, and SIGKILL on timeout: vvp
+    // traps SIGTERM and exits 0, which made a hung design look like a pass.
+    const v = spawnSync("vvp", ["a.out"], {
+      cwd: dir, encoding: "utf8", timeout: 15_000, killSignal: "SIGKILL",
+      maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = `${v.stdout ?? ""}${v.stderr ?? ""}`;
+    return { compiled: true, success: v.status === 0 && !v.error, stdout, log: v.error ? `timed out: ${stdout}` : stdout };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Same accept rule as gradeDesign() in lib/grading.ts. */
+function accepted(p: CheckProblem, design: string): { ok: boolean; detail: string } {
+  const compare = usesStdoutCompare(p);
+  for (const t of p.hidden) {
+    const r = simulate(design, t.testbench, p.files);
+    const pass = t.expected === null
+      ? sentinelPassed(r.success, r.stdout)
+      : testcasePassed(r.success, r.stdout, t.expected, compare);
+    if (!pass) return { ok: false, detail: `${t.name}: ${r.log.trim().split("\n").slice(-4).join(" | ")}` };
+  }
+  return { ok: true, detail: "" };
+}
+
+function hiddenTests(p: any): HiddenTest[] {
+  const cases = p.hiddenTestcases ?? [];
+  if (cases.length > 0) {
+    return cases.map((tc: any) => ({ name: `testcase ${tc.id}`, testbench: tc.testbench, expected: tc.expected }));
+  }
+  // Same fallback as the grader: hidden testbench, else the public one.
+  return [{ name: "hidden testbench", testbench: p.hiddenTestbench || p.publicTestbench || p.testbenchSkeleton || "", expected: null }];
+}
+
+const problems: CheckProblem[] = [
+  ...LEARNING_PATH.levels.flatMap((level) =>
+    level.modules.flatMap((m) => m.problems.map((p: any) => ({ ...p, learningLevel: level.title })))),
+  ...ALL_ARENA_PROBLEMS.map((p: any) => ({ ...p, learningLevel: "Arena" })),
+].map((p: any) => ({
+  slug: p.slug,
+  problemType: p.problemType ?? "design",
+  timing: !!p.timing,
+  verilator: p.verification?.simulator === "verilator",
+  learningLevel: p.learningLevel,
+  expectedOutputMode: p.expectedOutputMode ?? "stdout_compare",
+  starterCode: p.starterCode,
+  // Arena problems may only ship a testbench skeleton (users write their own).
+  publicTestbench: p.publicTestbench || p.testbenchSkeleton || "",
+  hidden: hiddenTests(p),
+  files: p.dataFiles ?? {},
+}));
+
+const errors: string[] = [];
+const fail = (slug: string, msg: string) => errors.push(`${slug}: ${msg}`);
+
+// The seed upserts by slug, so a repeated slug would silently replace the other problem.
+const seenSlugs = new Set<string>();
+for (const p of problems) {
+  if (seenSlugs.has(p.slug)) fail(p.slug, "this slug is used by more than one problem");
+  seenSlugs.add(p.slug);
+}
+
+for (const p of problems) {
+  if (p.problemType === "formal") {
+    // The skeleton is a property harness for the solver (Yosys), not a simulation testbench;
+    // the model harness and its mutants are checked by verifyReferenceSolution on import.
+    const dut = simulate(p.starterCode, "module bf_check_tb; endmodule", p.files);
+    if (!dut.compiled) fail(p.slug, `DUT does not compile: ${dut.log.trim().split("\n")[0]}`);
+    continue;
+  }
+  if (p.verilator) {
+    // SystemVerilog skeleton (classes, randomize()) runs on Verilator, not Icarus; the model
+    // testbench, coverage bar and mutants are checked by verifyReferenceSolution on import.
+    const empty = "module bf_check_tb; endmodule";
+    if (!simulate(p.starterCode, empty, p.files).compiled) fail(p.slug, "DUT does not compile");
+    const compiling = generateMutants(p.starterCode).filter((m) => simulate(m.code, empty, p.files).compiled);
+    if (compiling.length < 5) fail(p.slug, `only ${compiling.length} compiling mutants of the DUT (need 5)`);
+    continue;
+  }
+  const pub = simulate(p.starterCode, p.publicTestbench, p.files);
+  if (!pub.compiled) fail(p.slug, `starter + public testbench does not compile: ${pub.log.trim().split("\n")[0]}`);
+
+  for (const t of p.hidden) {
+    const r = simulate(p.starterCode, t.testbench, p.files);
+    if (!r.compiled) fail(p.slug, `starter + ${t.name} does not compile: ${r.log.trim().split("\n")[0]}`);
+  }
+
+  if (p.problemType === "testbench") {
+    // The DUT is correct by design; what matters is that it has bugs to find.
+    const compiling = generateMutants(p.starterCode).filter((m) => simulate(m.code, p.publicTestbench, p.files).compiled);
+    if (compiling.length < 5) fail(p.slug, `only ${compiling.length} compiling mutants of the DUT (need 5)`);
+    continue;
+  }
+  if (p.timing) {
+    // A correct but slow starter is the point; the speed check is private/timing/verify.ts (needs nextpnr).
+    if (!accepted(p, p.starterCode).ok) fail(p.slug, "timing problem's starter should pass the hidden tests (only its speed is wrong)");
+  } else if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
+}
+
+// Sandbox templates: each design + testbench pair must compile, finish and report no failures.
+for (const [key, t] of Object.entries(TEMPLATES)) {
+  if (t.designLanguage === "vhdl" || t.testbenchLanguage === "python") continue;   // need GHDL / cocotb: covered by the API tests
+  // Multi-file templates are combined the way the Sandbox sends them (lib/project-files.ts).
+  const files = t.files ?? [];
+  const r = simulate(combineDesign(t.design, files).code, t.testbench, dataFiles(files) ?? {});
+  if (!r.compiled) fail(`template ${key}`, `does not compile: ${r.log.trim().split("\n")[0]}`);
+  else if (!r.success || /\bFAIL/.test(r.stdout)) fail(`template ${key}`, r.log.trim().split("\n").slice(-3).join(" | "));
+}
+
+console.log(`Checked ${problems.length} problems and ${Object.keys(TEMPLATES).length} Sandbox templates.`);
+if (errors.length) {
+  console.error(`\n${errors.length} problem(s) found:\n` + errors.map((e) => `  ✗ ${e}`).join("\n"));
+  process.exit(1);
+}
+console.log("All problems OK.");

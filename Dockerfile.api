@@ -8,12 +8,41 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Install system dependencies (curl for healthcheck, iverilog for running simulations)
+# Install system dependencies: curl (healthcheck), iverilog (simulation), verilator (lint, and the
+# verification simulator in api/verilator_sim.py: it builds C++, so make), yosys (synthesis, formal),
+# z3 (formal solver, and Verilator's randomize() constraints), ghdl (VHDL), nextpnr-ice40 (place & route),
+# opensta (static timing and power on the Sky130 gate netlist, api/routes/asic.py).
+# Place & route targets the HX8K only (api/routes/synthesize.py): the other chip databases (137 MB) go.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iverilog \
+    verilator \
+    make \
+    yosys \
+    z3 \
+    ghdl \
+    nextpnr-ice40 \
+    opensta \
     coreutils \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && find /usr/share/nextpnr/ice40 -name 'chipdb-*.bin' ! -name 'chipdb-8k.bin' -delete
+
+# Verible (chipsalliance): SystemVerilog style lint + formatter for api/routes/style.py.
+# Pinned release, checked against its published sha256; only the two tools are kept.
+ARG VERIBLE_VERSION=v0.0-4296-g0f262651
+ARG VERIBLE_SHA256=8569defb891d2316067613ea00442af28a7a09d405d95b54c0c91f9942d26635
+RUN curl -fsSL -o /tmp/verible.tgz \
+      "https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz" \
+    && echo "${VERIBLE_SHA256}  /tmp/verible.tgz" | sha256sum -c - \
+    && tar -xzf /tmp/verible.tgz -C /tmp \
+    && install -m 755 /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-lint \
+                      /tmp/verible-${VERIBLE_VERSION}/bin/verible-verilog-format /usr/local/bin/ \
+    && rm -rf /tmp/verible.tgz /tmp/verible-${VERIBLE_VERSION}
+
+# SkyWater 130 nm standard cells for ASIC area, timing and power (api/routes/asic.py):
+# the pinned, checksummed library and the gate-level simulation models generated from it.
+COPY api/install_sky130.sh /tmp/install_sky130.sh
+RUN sh /tmp/install_sky130.sh /opt/sky130 && rm /tmp/install_sky130.sh
 
 # Install python dependencies
 COPY requirements.txt .
@@ -26,12 +55,17 @@ RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/en
 # Copy the API source code
 COPY api/ /app/api/
 
+# Verilator's runtime library is the same for every design: build it once here so each
+# verification run only compiles the student's model (api/verilator_sim.py prebuild_runtime).
+RUN cd /app && JWT_SECRET=image-build-placeholder-never-used-at-runtime python -c "from api.verilator_sim import prebuild_runtime; prebuild_runtime()" \
+    && ls /opt/verilator-runtime
+
 # Copy the environment file to working directory root if it exists
 RUN cp /app/api/.env /app/.env || true
 
 
 
-# Expose the port Railway will route traffic to
+# Port the API listens on inside the compose network
 EXPOSE 8080
 
 # Run the API server — shell form so ${PORT} expands correctly

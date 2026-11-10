@@ -11,10 +11,21 @@ Keeping schemas in one file means:
 
 from __future__ import annotations
 
-from enum import IntEnum, auto
-from typing import Optional
+import re
+from enum import IntEnum
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Extra input files (POST /simulate "files"): plain names, never the sandbox's own.
+MAX_DATA_FILES      = 4
+DATA_FILE_NAME      = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")
+RESERVED_FILE_NAMES = {"design.v", "tb.v", "a.out", "wave.vcd", ".proc_output.log",
+                       "design.vhd", "tb.vhd", "test_tb.py", "results.xml", "bf_dump.v", "cmds.f", "sim.vvp",
+                       "bf_guard.py"}
+# The workspace is first on a cocotb run's Python path: a data file named cocotb.py or
+# sitecustomize.py would run before the sandbox guard. Data files are for $readmemh etc.
+CODE_FILE_SUFFIXES = (".py", ".pyc", ".pth", ".so")
 
 
 # =============================================================================
@@ -81,6 +92,10 @@ class SimulateJsonRequest(BaseModel):
         description="Full contents of the Verilog testbench file (tb.v).",
         examples=["module tb; top dut(.clk(clk)); endmodule"],
     )
+    lint: bool = Field(
+        default=False,
+        description="Also run Verilator lint on design_v; findings are appended to stdout.",
+    )
     timeout: Optional[int] = Field(
         default=None,
         ge=1,
@@ -91,12 +106,56 @@ class SimulateJsonRequest(BaseModel):
         ),
     )
 
+    files: Optional[dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Extra input files written next to design.v, e.g. a hex file for "
+            "$readmemh. At most 4; plain file names only (no paths)."
+        ),
+        examples=[{"sine_lut.hex": "80\n83\n86\n"}],
+    )
+
+    design_language: Literal["verilog", "vhdl"] = Field(
+        default="verilog",
+        description="Language of design_v. Verilog includes the SystemVerilog subset Icarus supports.",
+    )
+    testbench_language: Literal["verilog", "vhdl", "python"] = Field(
+        default="verilog",
+        description="Language of testbench_v: Verilog, VHDL (needs a VHDL design) or a cocotb Python test module.",
+    )
+    simulator: Literal["icarus", "verilator"] = Field(
+        default="icarus",
+        description="Verilog testbenches only: Icarus (fast, default) or Verilator 5 with SystemVerilog "
+                    "assertions, constrained random and coverage (api/verilator_sim.py).",
+    )
+
+    @model_validator(mode="after")
+    def _languages_match(self) -> "SimulateJsonRequest":
+        if self.testbench_language == "vhdl" and self.design_language != "vhdl":
+            raise ValueError("A VHDL testbench needs a VHDL design (GHDL can't simulate Verilog).")
+        return self
+
     @field_validator("design_v", "testbench_v")
     @classmethod
     def _no_null_bytes(cls, v: str) -> str:
         """Reject strings with embedded null bytes — they break shell tools."""
         if "\x00" in v:
             raise ValueError("Source code must not contain null bytes.")
+        return v
+
+    @field_validator("files")
+    @classmethod
+    def _safe_files(cls, v: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+        """Only a few plain names that can't escape or clobber the workspace."""
+        if not v:
+            return v
+        if len(v) > MAX_DATA_FILES:
+            raise ValueError(f"At most {MAX_DATA_FILES} extra files.")
+        for name, content in v.items():
+            if not DATA_FILE_NAME.fullmatch(name) or name in RESERVED_FILE_NAMES or name.lower().endswith(CODE_FILE_SUFFIXES):
+                raise ValueError(f"Invalid file name: {name!r}")
+            if "\x00" in content:
+                raise ValueError(f"{name} must not contain null bytes.")
         return v
 
 
@@ -179,6 +238,16 @@ class SimulateResponse(BaseModel):
             "Short unique ID of the temporary workspace directory. "
             "Useful for correlating API logs with host-side tmpdir names."
         ),
+    )
+
+    # ── Verilator flow only ──────────────────────────────────────────────────
+    assertions: list[dict] = Field(
+        default_factory=list,
+        description="Failed SystemVerilog assertions: {time, file, line, scope, message, severity}.",
+    )
+    coverage: Optional[dict] = Field(
+        default=None,
+        description="Design coverage: {summary: {line|branch|toggle|user: {hit, total, percent}}, lines, toggles, covers}.",
     )
 
 

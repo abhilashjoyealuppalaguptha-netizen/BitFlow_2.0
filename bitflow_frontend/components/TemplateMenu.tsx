@@ -4,7 +4,9 @@
  * ─── Purpose ─────────────────────────────────────────────────────────────────
  * Lets the user load a pre-written Verilog design + testbench pair into both
  * Monaco editors with a single click.  Sandbox-only feature — NOT connected to
- * any future problem-solving mode.
+ * any future problem-solving mode.  Loading replaces both editors (appending left
+ * two top modules and a stale testbench that no longer compiled); it asks first
+ * if either editor holds the user's own code.
  *
  * ─── Architecture ────────────────────────────────────────────────────────────
  * Purely presentational after the initial render.  All state mutations go
@@ -19,21 +21,29 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { TEMPLATES, TEMPLATE_ORDER } from "@/lib/templates";
+import { TEMPLATES, TEMPLATE_ORDER, type VerilogTemplate } from "@/lib/templates";
+import {
+  DEFAULT_DESIGN, DEFAULT_DESIGN_VHDL, DEFAULT_TESTBENCH, DEFAULT_TESTBENCH_COCOTB, DEFAULT_TESTBENCH_VHDL,
+} from "@/hooks/useSimulation";
+
+/** Code the user hasn't written: empty, a starter, or an unmodified template. */
+const PRISTINE = new Set(
+  [DEFAULT_DESIGN, DEFAULT_TESTBENCH, DEFAULT_DESIGN_VHDL, DEFAULT_TESTBENCH_VHDL, DEFAULT_TESTBENCH_COCOTB, "",
+   ...Object.values(TEMPLATES).flatMap((t) => [t.design, t.testbench])]
+    .map((c) => c.trim()),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TemplateMenuProps {
-  /** Current content of design.v editor — used to append template below it. */
+  /** Current content of design.v editor — checked before it is replaced. */
   currentDesign:     string;
-  /** Current content of tb.v editor — used to append template below it. */
+  /** Current content of tb.v editor — checked before it is replaced. */
   currentTestbench:  string;
-  /** setDesignCode from useSimulation — populates the left editor. */
-  onDesignChange:    (code: string) => void;
-  /** setTestbenchCode from useSimulation — populates the right editor. */
-  onTestbenchChange: (code: string) => void;
+  /** loadProject from useSimulation — fills both editors and switches their languages. */
+  onLoad:            (template: VerilogTemplate) => void;
   /** Disable during simulation runs so a template load doesn't race. */
   disabled?: boolean;
 }
@@ -45,8 +55,7 @@ interface TemplateMenuProps {
 export default function TemplateMenu({
   currentDesign,
   currentTestbench,
-  onDesignChange,
-  onTestbenchChange,
+  onLoad,
   disabled = false,
 }: TemplateMenuProps) {
   /**
@@ -65,17 +74,19 @@ export default function TemplateMenu({
       const template = TEMPLATES[key];
       if (!template) return;
 
-      // Append to existing content with a blank line separator so the user's
-      // current code is preserved and the template is added below it.
-      onDesignChange(currentDesign + "\n\n" + template.design.trimStart());
-      onTestbenchChange(currentTestbench + "\n\n" + template.testbench.trimStart());
+      const edited = !PRISTINE.has(currentDesign.trim()) || !PRISTINE.has(currentTestbench.trim());
+      if (edited && !window.confirm(`Replace the code in both editors with "${template.label}"? Your current design and testbench will be lost.`)) {
+        e.target.value = "";
+        return;
+      }
+      onLoad(template);
 
       // Reset to placeholder after a brief tick so the user sees the
       // selection flash before it returns — confirms the load happened.
       setSelectedKey(key);
       setTimeout(() => setSelectedKey(""), 800);
     },
-    [onDesignChange, onTestbenchChange],
+    [currentDesign, currentTestbench, onLoad],
   );
 
   return (

@@ -13,12 +13,10 @@
  *                        alignment matters). This is deliberately left untouched so switching
  *                        the site to Inter doesn't misalign the Sandbox terminal/waveform panel.
  *
- *   Google Fonts are imported here rather than via next/font because
- *   Monaco Editor loads its own fonts and next/font's optimisation can
- *   interfere with the editor's font detection.
+ *   Both are self-hosted by next/font (lib/fonts.ts), which sets --font-inter
+ *   and --font-jetbrains on <html>. Monaco gets the real family name from
+ *   lib/fonts.ts so its font measurement sees a concrete font.
  */
-
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -30,9 +28,9 @@
 
 @layer base {
   :root {
-    --font-ui:      "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono:    "JetBrains Mono", "Courier New", monospace;
+    --font-ui:      var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-display: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono:    var(--font-jetbrains), "Courier New", monospace;
   }
 
   /* Hard reset — remove all user-agent margins/padding */
@@ -71,6 +69,11 @@
   html.page-scrollable body {
     overflow: auto !important;
     height: auto !important;
+  }
+  /* The document scrolls, not the body: a body with overflow auto would be the scroll
+     container sticky headers (components/SiteHeader.tsx) stick to, and it never scrolls. */
+  html.page-scrollable body {
+    overflow: visible !important;
   }
 
   /* Make the Next.js root div fill the viewport */
@@ -113,6 +116,35 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/* Something new appearing in an Academy animation */
+.anim-in { transform-box: fill-box; transform-origin: center; animation: anim-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes anim-in { from { opacity: 0; transform: scale(0.94); } }
+/* The same for something already positioned with a transform */
+.anim-fade { animation: anim-fade 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes anim-fade { from { opacity: 0; } }
+
+/* Pixel UI (components/pixel): frame strips and block chases move in whole steps, never smoothly */
+.px-frames { animation: px-frames 1s steps(var(--px-n)) infinite; }
+@keyframes px-frames { to { transform: translateX(var(--px-w)); } }
+/* A block of a chase: lit for the first third of its cycle; siblings are staggered by animation-delay */
+.px-chase { animation: px-chase 0.9s steps(1, end) infinite; }
+@keyframes px-chase { 0%, 33% { background-color: var(--px-on, #00e87a); } 34%, 100% { background-color: var(--px-off, rgba(0,232,122,.14)); } }
+/* A pixel trace scrolling one period left in whole-pixel steps, seamlessly (components/pixel/PixelLoader.tsx) */
+.px-scroll { animation: px-scroll 0.8s steps(var(--px-steps, 8)) infinite; }
+@keyframes px-scroll { to { transform: translateX(var(--px-shift, -8px)); } }
+/* A terminal block cursor */
+.px-blink { animation: px-blink 1s steps(1, end) infinite; }
+@keyframes px-blink { 50% { opacity: 0; } }
+/* A progress block turning on: no fade, just on, one block after another (transition-delay set per block) */
+.px-cell { transition: background-color 0s, box-shadow 0s; }
+/* An old screen switching on: a bright line opens into the picture, in steps */
+.px-crt { animation: px-crt 0.7s steps(7, end) both; transform-origin: center; }
+@keyframes px-crt {
+  0%   { transform: scale(0.4, 0.02); filter: brightness(3); }
+  45%  { transform: scale(1, 0.02);   filter: brightness(3); }
+  100% { transform: none;             filter: none; }
+}
+
 /* Respect reduced-motion preference — kill decorative animation, keep instant */
 /* ─────────────────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
@@ -143,3 +175,105 @@
     z-index: 9999;
   }
 }
+/* iOS zooms into form fields whose text is under 16px. Pinch-zoom stays
+   enabled (no maximum-scale), so give fields 16px text on phones instead.
+   Monaco's hidden textarea (.inputarea) is left alone. */
+@media (max-width: 640px) {
+  input, select, textarea:not(.inputarea) { font-size: 16px !important; }
+}
+
+/* Lab report (components/LabReport.tsx): while it is open, printing shows only the report */
+@media print {
+  body.lab-report-open > *:not(#lab-report-root) { display: none !important; }
+  html:has(body.lab-report-open), body.lab-report-open { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body.lab-report-open #lab-report-root { position: static !important; overflow: visible !important; }
+  @page { margin: 14mm; }
+}
+
+/* ── BitFlow 3.0 APEX: announcements theme (black, silver, pixel fire: components/PixelFire.tsx). Scoped; the site keeps its own colours. ── */
+.apex {
+  --apex-bg: #050405;
+  --apex-panel: #0e0c0d;
+  --apex-line: #2e2b2e;
+  --apex-text: #c9ccd3;
+  --apex-steel: #989da8;
+  --apex-red: #ff4136;
+  --apex-ember: #ff7a1a;
+  --apex-glow: rgba(255, 65, 54, 0.55);
+  background: var(--apex-bg);
+  color: var(--apex-text);
+}
+.apex-bright { color: #f2f3f5; }
+.apex-steel { color: var(--apex-steel); }
+.apex-eyebrow { font-family: var(--font-mono), monospace; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--apex-red); }
+.apex-silver {
+  background: linear-gradient(180deg, #ffffff 0 48%, #b9bcc4 48% 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(4px 4px 0 #3a3b40);
+}
+.apex-flame {
+  background: linear-gradient(180deg, #ffc860 0 32%, #ff7a1a 32% 64%, #e8261b 64% 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(4px 4px 0 #4f0b07) hue-rotate(calc(var(--doom, 0) * 115deg));
+}
+.apex-pixelfire { position: absolute; left: 0; bottom: 0; width: 100%; pointer-events: none; image-rendering: pixelated; }
+.apex-pixelfire-strip { height: 50%; opacity: 0.55; }
+.apex-card { background: rgba(14, 12, 13, 0.9); border: 1px solid var(--apex-line); border-radius: 14px; }
+.apex-card-pinned {
+  border-color: var(--apex-glow);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--apex-glow) 22%, transparent), 0 12px 44px -18px var(--apex-glow);
+}
+.apex-kind { color: var(--apex-ember); letter-spacing: 0.04em; }
+.apex-new { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, #d21f16, #0d7a3a calc(var(--doom, 0) * 100%)); color: #ffffff; font-weight: 700; }
+.apex-list { list-style: none; }
+.apex-list li { position: relative; padding-left: 18px; }
+.apex-list li::before { content: ""; position: absolute; left: 2px; top: 0.62em; width: 6px; height: 6px; border-radius: 1px; transform: rotate(45deg); background: var(--apex-red); }
+.apex code { background: #1a1718; border-color: var(--apex-line); color: #ffb37a; }
+.apex-strip { border: 1px solid rgba(255, 65, 54, 0.5); }
+
+/* Scrolling past a line turns the page: --doom goes from 0 to 1 during the fire's burst (components/PixelFire.tsx). Colours, plus iron plates behind everything. */
+@supports (color: color-mix(in srgb, red, blue)) {
+  .apex {
+    --apex-bg: color-mix(in srgb, #050405, #040b07 calc(var(--doom, 0) * 100%));
+    --apex-line: color-mix(in srgb, #2e2b2e, #24443a calc(var(--doom, 0) * 100%));
+    --apex-red: color-mix(in oklch, #ff4136, #39d96b calc(var(--doom, 0) * 100%));
+    --apex-ember: color-mix(in oklch, #ff7a1a, #7df0a0 calc(var(--doom, 0) * 100%));
+    --apex-glow: color-mix(in oklch, rgba(255, 65, 54, 0.55), rgba(57, 217, 107, 0.55) calc(var(--doom, 0) * 100%));
+  }
+  .apex-card { background: color-mix(in srgb, rgba(14, 12, 13, 0.9), rgba(8, 18, 13, 0.9) calc(var(--doom, 0) * 100%)); }
+}
+.apex-doom {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: var(--doom, 0);
+  background-color: #060d09;
+  background-image:
+    radial-gradient(circle at 14px 14px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 166px 14px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 14px 106px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 166px 106px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    linear-gradient(90deg, #34503f 0 2px, #010302 2px 5px, transparent 5px),
+    linear-gradient(180deg, #34503f 0 2px, #010302 2px 5px, transparent 5px),
+    linear-gradient(180deg, #1a2e23, #0e1b14);
+  background-size: 180px 120px;
+}
+/* The sorcerous glow, behind where the title sits. */
+.apex-doom::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(70% 45% at 50% 24%, rgba(57, 217, 107, 0.34), rgba(57, 217, 107, 0.1) 55%, transparent 80%);
+}
+
+/* The title and fire stay put; the posts scroll up over the title. */
+.apex-stage { position: fixed; inset: 56px 0 0 0; z-index: 0; }
+.apex-feed { position: relative; z-index: 10; padding-top: max(58svh, 340px); padding-bottom: 35svh; }
+.apex-pixelfire-dock { position: fixed; height: 100svh; z-index: 5; }
+.apex-pixelfire-burst { z-index: 20; }   /* over the posts while it rages, under the header */
+.apex-footer { position: relative; z-index: 25; background: var(--apex-bg); }
+@keyframes apex-recede { to { opacity: 0.14; transform: translateY(-28px) scale(0.95); } }
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .apex-recede { transform-origin: 0 0; animation: apex-recede linear both; animation-timeline: scroll(root); animation-range: 0 60vh; }
+  }
+}
+
+/* "Trace the bug" (lib/trace.ts): the line it points at in the editor */
+.bf-trace-line { background: rgba(255, 92, 92, 0.13); }
+.bf-trace-gutter { border-left: 3px solid #ff5c5c; margin-left: 3px; }

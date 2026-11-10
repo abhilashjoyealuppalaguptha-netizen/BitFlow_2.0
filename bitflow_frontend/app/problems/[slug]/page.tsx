@@ -32,12 +32,19 @@ import { parseVcd }           from "@/lib/vcd-parser";
 import { recordHintUnlock }   from "@/lib/progress-storage";
 import type { ParsedVcd }     from "@/lib/vcd-parser";
 import type { RunState }      from "@/lib/types";
+import { useMemo }            from "react";
+import { parseDiagnostics }   from "@/lib/diagnostics";
+import PixelLoader from "@/components/pixel/PixelLoader";
 
 // Monaco — browser only
 const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
-  loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
+  loading: () => <div className="w-full h-full bg-pit grid place-items-center"><PixelLoader label="Loading the editor…" /></div>,
 });
+// Panels start closed, so they load after the page instead of in its first bundle.
+const SynthesisPanel = dynamic(() => import("../../../components/SynthesisPanel"), { ssr: false });
+const LabReport      = dynamic(() => import("../../../components/LabReport"), { ssr: false });
+const AIAssistantPanel = dynamic(() => import("../../../components/AIAssistantPanel"), { ssr: false });
 
 const SPLITTER_H         = 6;
 const DEFAULT_LEFT_FRAC  = 0.32;   // Statement panel: 32% width
@@ -74,6 +81,9 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     testbenchCode,
     setDesignCode,
     setTestbenchCode,
+    language,
+    vhdlAvailable,
+    setLanguage,
     runState,
     isRunning,
     isSubmitting,
@@ -85,12 +95,18 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     run,
     submit,
   } = useProblem(problem);
+  const diagnostics = useMemo(() => parseDiagnostics(runResult?.stdout), [runResult]);
+  const [aiAsk, setAiAsk] = useState<{ id: number; prompt: string } | null>(null);
 
   const {
     progress,
     recordSolve,
     recordAttempt,
   } = useProgress();
+
+  const [tutorOpen, setTutorOpen] = useState(false);
+  const [synthOpen, setSynthOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   // ── VCD parsing ────────────────────────────────────────────────────────────
   const [parsedVcd, setParsedVcd] = useState<ParsedVcd | null>(null);
@@ -237,6 +253,9 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         submittingTotal={submittingTotal}
         onRun={run}
         onSubmit={submit}
+        onToggleTutor={() => setTutorOpen((v) => !v)}
+        onSynthesize={() => setSynthOpen(true)}
+        onReport={() => setReportOpen(true)}
       />
 
       {/* ── Main content ─────────────────────────────────────────────── */}
@@ -248,10 +267,13 @@ function ProblemSolverInner({ problem }: { problem: any }) {
           style={{ width: `${leftFrac * 100}%` }}
         >
           <ProblemStatement
+            onExplainFailure={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }}
+            onReviewDesign={(prompt) => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt }); }}
             problem={problem}
             progress={progress}
             submission={submission}
             onUnlockHint={handleUnlockHint}
+            history={{ slug: problem.slug, currentCode: designCode, onLoad: setDesignCode, refreshOn: [runResult, submission] }}
           />
         </div>
 
@@ -276,15 +298,31 @@ function ProblemSolverInner({ problem }: { problem: any }) {
               style={{ flex: `0 0 ${designFrac * 100}%` }}
             >
               <div className="flex items-center justify-between px-4 h-9 shrink-0 bg-surface border-b border-rim">
-                <span className="font-mono text-[11px] text-pale">design.v</span>
-                <span className="font-mono text-[9px] text-dim">DUT</span>
+                <span className="font-mono text-[11px] text-pale">{language === "vhdl" ? "design.vhd" : "design.v"}</span>
+                {vhdlAvailable ? (
+                  <div className="flex gap-1 font-mono text-[9px]" role="radiogroup" aria-label="Design language">
+                    {([["verilog", "Verilog / SV"], ["vhdl", "VHDL"]] as const).map(([id, label]) => (
+                      <button key={id} role="radio" aria-checked={language === id} disabled={isRunning || isSubmitting}
+                        onClick={() => setLanguage(id)}
+                        title={id === "vhdl" ? "Write this design in VHDL: it is converted to Verilog (GHDL) and graded by the same tests" : undefined}
+                        className={`px-2 py-0.5 rounded border ${language === id ? "border-phosphor/50 text-phosphor bg-phosphor/10" : "border-rim text-dim hover:text-ghost"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="font-mono text-[9px] text-dim">DUT</span>
+                )}
               </div>
               <div className="flex-1 min-h-0">
                 <Editor
                   value={designCode}
                   onChange={setDesignCode}
-                  language="verilog"
+                  language={language === "vhdl" ? "vhdl" : "systemverilog"}
                   readOnly={isRunning || isSubmitting}
+                  diagnostics={diagnostics.design}
+                  lint={language !== "vhdl"}
+                  revealLines
                 />
               </div>
             </div>
@@ -310,6 +348,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   onChange={setTestbenchCode}
                   language="verilog"
                   readOnly={isRunning || isSubmitting}
+                  diagnostics={diagnostics.tb}
                 />
               </div>
             </div>
@@ -342,13 +381,32 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   isDragging={wfSplitter.isDragging}
                 />
                 <div className="shrink-0 overflow-hidden" style={{ height: waveH }}>
-                  <WaveformPanel parsedVcd={parsedVcd} result={runResult} />
+                  <WaveformPanel parsedVcd={parsedVcd} result={runResult} viewKey={`/problems/${problem.slug}`} />
                 </div>
               </>
             )}
           </div>
         </div>
       </div>
+
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={language} />
+      {reportOpen && (
+        <LabReport onClose={() => setReportOpen(false)} result={runResult} parsedVcd={parsedVcd} viewKey={`/problems/${problem.slug}`} synthDesign={designCode}
+                   problem={{ title: problem.title, difficulty: problem.difficulty, statement: problem.statement, submission }}
+                   files={[{ name: language === "vhdl" ? "design.vhd" : "design.v", content: designCode }, { name: "tb.v", content: testbenchCode }]} />
+      )}
+
+      <AIAssistantPanel
+        isOpen={tutorOpen}
+        onClose={() => setTutorOpen(false)}
+        designCode={designCode}
+        testbenchCode={testbenchCode}
+        result={runResult}
+        setDesignCode={setDesignCode}
+        setTestbenchCode={setTestbenchCode}
+        problemSlug={problem.slug}
+        ask={aiAsk}
+      />
     </div>
   );
 }
@@ -383,10 +441,7 @@ export default function ProblemPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-void flex flex-col items-center justify-center text-center">
-        <div className="w-8 h-8 rounded border-2 border-t-phosphor border-rim animate-spin mb-4" />
-        <p className="font-mono text-[11px] text-dim">Loading challenge details...</p>
-      </div>
+      <div className="min-h-screen bg-void flex items-center justify-center"><PixelLoader size="lg" label="Loading the challenge…" /></div>
     );
   }
 

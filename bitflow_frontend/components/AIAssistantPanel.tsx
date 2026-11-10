@@ -27,9 +27,10 @@ import React, {
   memo,
 }                           from "react";
 import { useAI }            from "@/hooks/useAI";
-import { QUICK_ACTIONS }    from "@/lib/ai-prompts";
+import { QUICK_ACTIONS, TUTOR_QUICK_ACTIONS } from "@/lib/ai-prompts";
 import type { SimulateResponse } from "@/lib/types";
 import type { ChatMessage, CodeSuggestion, PendingChange } from "@/hooks/useAI";
+import { PixelDots } from "@/components/pixel/PixelLoader";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -43,6 +44,10 @@ interface AIAssistantPanelProps {
   result:          SimulateResponse | null;
   setDesignCode:   (code: string) => void;
   setTestbenchCode:(code: string) => void;
+  /** Graded problem page: tutor mode (hints only, server adds the problem). */
+  problemSlug?:    string;
+  /** A question to send once the panel is open (e.g. "Explain my failure"); a new id sends again. */
+  ask?:            { id: number; prompt: string } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +259,8 @@ export default function AIAssistantPanel({
   result,
   setDesignCode,
   setTestbenchCode,
+  problemSlug,
+  ask,
 }: AIAssistantPanelProps) {
   const {
     messages,
@@ -291,7 +298,8 @@ export default function AIAssistantPanel({
     stdout: result?.stdout,
     stderr: result?.stderr,
     status: result?.status,
-  }), [designCode, testbenchCode, result]);
+    problemSlug,
+  }), [designCode, testbenchCode, result, problemSlug]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading) return;
@@ -310,6 +318,13 @@ export default function AIAssistantPanel({
   const handleQuickAction = useCallback(async (prompt: string) => {
     await sendMessage(prompt, getContext());
   }, [sendMessage, getContext]);
+
+  const askedId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isOpen || !ask || askedId.current === ask.id || isLoading) return;
+    askedId.current = ask.id;
+    sendMessage(ask.prompt, getContext());
+  }, [isOpen, ask, isLoading, sendMessage, getContext]);
 
   if (!isOpen) return null;
 
@@ -334,7 +349,7 @@ export default function AIAssistantPanel({
             <path d="M4 7h6M7 4v6" strokeLinecap="round" />
           </svg>
           <span className="font-mono text-[10px] text-ghost tracking-widest uppercase">
-            AI Assistant
+            {problemSlug ? "AI Tutor" : "AI Assistant"}
           </span>
           {/* TODO: Oogway branding */}
         </div>
@@ -371,7 +386,7 @@ export default function AIAssistantPanel({
 
       {/* ── Quick actions ────────────────────────────────────────────────── */}
       <div className="shrink-0 flex flex-wrap gap-1 px-2 py-1.5 border-b border-rim/40 bg-surface/30">
-        {QUICK_ACTIONS.map((qa) => (
+        {(problemSlug ? TUTOR_QUICK_ACTIONS : QUICK_ACTIONS).map((qa) => (
           <button
             key={qa.label}
             onClick={() => handleQuickAction(qa.prompt)}
@@ -418,9 +433,7 @@ export default function AIAssistantPanel({
 
         {isLoading && (
           <div className="flex items-center gap-2 text-dim font-mono text-[10px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" />
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" style={{ animationDelay: "0.2s" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse_soft" style={{ animationDelay: "0.4s" }} />
+            <PixelDots />
             <span className="text-dim/50">thinking…</span>
           </div>
         )}

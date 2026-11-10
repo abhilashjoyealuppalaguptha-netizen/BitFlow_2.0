@@ -8,6 +8,7 @@
  * Server-side only (uses prisma directly).
  */
 
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +32,6 @@ export interface DbProblem {
   starterCode:        string;
   testbenchSkeleton:  string | null;
   publicTestbench:    string;
-  hiddenTestcases:    unknown[];
   publicTestcases:    unknown[];
   expectedOutputMode: string;
   waveformRequired:   boolean;
@@ -49,14 +49,17 @@ function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
   catch { return fallback; }
 }
 
+// Rows from here end up in pages sent to the browser (e.g. the Arena hub), so the
+// hidden tests and the reference solution are dropped: grading reads them
+// directly in app/api/problems/[slug]/submit.
 function parseQuestion(q: Record<string, unknown>): DbProblem {
+  const { hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, editorial: _ed, ...pub } = q;
   return {
-    ...(q as unknown as DbProblem),
+    ...(pub as unknown as DbProblem),
     tags:            safeParseJson(q.tags as string,            []),
     constraints:     safeParseJson(q.constraints as string,     []),
     examples:        safeParseJson(q.examples as string,        []),
     hints:           safeParseJson(q.hints as string,           []),
-    hiddenTestcases: safeParseJson(q.hiddenTestcases as string, []),
     publicTestcases: safeParseJson(q.publicTestcases as string, []),
   };
 }
@@ -71,7 +74,7 @@ function parseQuestion(q: Record<string, unknown>): DbProblem {
  */
 export async function getProblemBySlugFromDb(slug: string): Promise<DbProblem | null> {
   const q = await prisma.question.findUnique({ where: { slug } });
-  if (!q) return null;
+  if (!q || q.archived) return null;
   return parseQuestion(q as unknown as Record<string, unknown>);
 }
 
@@ -81,7 +84,7 @@ export async function getProblemBySlugFromDb(slug: string): Promise<DbProblem | 
  */
 export async function getProblemsByLevel(level: string): Promise<DbProblem[]> {
   const questions = await prisma.question.findMany({
-    where:   { learningLevel: level },
+    where:   { learningLevel: level, archived: false },
     orderBy: { orderIndex: "asc" },
   });
   return questions.map(q => parseQuestion(q as unknown as Record<string, unknown>));
@@ -92,7 +95,7 @@ export async function getProblemsByLevel(level: string): Promise<DbProblem[]> {
  */
 export async function getProblemsByModule(moduleId: string): Promise<DbProblem[]> {
   const questions = await prisma.question.findMany({
-    where:   { moduleId },
+    where:   { moduleId, archived: false },
     orderBy: { orderIndex: "asc" },
   });
   return questions.map(q => parseQuestion(q as unknown as Record<string, unknown>));
@@ -120,20 +123,29 @@ export async function getProblemsByModuleGrouped(
 /**
  * Get all Arena problems (learningLevel = "Arena")
  */
-export async function getArenaProblems(): Promise<DbProblem[]> {
-  return getProblemsByLevel("Arena");
+/**
+ * The Arena hub's list: only the columns it shows. Full rows carry hidden testbenches,
+ * reference solutions and mutants, which made the hub slow to load.
+ */
+export function getArenaHubRows() {
+  return prisma.question.findMany({
+    where:   { learningLevel: "Arena", archived: false },
+    orderBy: { orderIndex: "asc" },
+    select:  { slug: true, title: true, difficulty: true, category: true, xpReward: true, statement: true, unlockAfter: true },
+  });
 }
 
 /**
  * Get a single Arena problem by slug.
  */
-export async function getArenaProblemBySlugFromDb(slug: string): Promise<DbProblem | null> {
+export const getArenaProblemBySlugFromDb = cache(async (slug: string): Promise<DbProblem | null> => {
+  // cache(): generateMetadata and the page both ask for it; one query per request
   const q = await prisma.question.findUnique({
     where: { slug },
   });
-  if (!q || q.learningLevel !== "Arena") return null;
+  if (!q || q.archived || q.learningLevel !== "Arena") return null;
   return parseQuestion(q as unknown as Record<string, unknown>);
-}
+});
 
 /**
  * Get total problem count by level.

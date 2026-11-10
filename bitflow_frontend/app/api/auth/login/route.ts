@@ -1,33 +1,37 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth-utils";
+import { createSession, hashPassword, verifyPassword } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  // Rate limit: max 10 login attempts per minute per IP
-  const { success } = rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "login" });
-  if (!success) {
-    return NextResponse.json(
-      { error: "Too many login attempts. Please wait a moment and try again." },
-      { status: 429 }
-    );
-  }
-
   try {
     const { username, password, role } = await request.json();
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
 
-    if (!normalizedUsername || !password || !role) {
+    // Max 10 attempts per minute per account: stops password guessing without
+    // letting one client lock everyone out (client IPs aren't always known).
+    const { success } = await rateLimit(request, {
+      limit: 10, windowMs: 60_000, prefix: "login", key: `account:${normalizedUsername.toLowerCase()}`,
+    });
+    if (!success) {
       return NextResponse.json(
-        { error: "Username, password, and role are required." },
+        { error: "Too many login attempts. Please wait a moment and try again." },
+        { status: 429 }
+      );
+    }
+
+    if (!normalizedUsername || !password) {
+      return NextResponse.json(
+        { error: "Username and password are required." },
         { status: 400 }
       );
     }
 
-    if (role !== "STUDENT" && role !== "ADMIN") {
+    // Optional: the sign-in form no longer sends it (the account's own role decides where it lands).
+    if (role !== undefined && role !== "STUDENT" && role !== "ADMIN") {
       return NextResponse.json(
         { error: "Invalid role specified." },
         { status: 400 }
@@ -55,22 +59,25 @@ export async function POST(request: Request) {
     }
 
     // Verify password hash
-    const inputHash = hashPassword(password);
-    if (user.password !== inputHash) {
+    const { ok, needsRehash } = verifyPassword(password, user.password);
+    if (!ok) {
       return NextResponse.json(
         { error: "Invalid username or password." },
         { status: 400 }
       );
     }
+    // Only after the password is right, so this doesn't reveal which usernames exist.
+    if (user.bannedAt) {
+      return NextResponse.json({ error: "This account has been suspended. Use the contact form if you think that's a mistake." }, { status: 403 });
+    }
+    if (needsRehash) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data:  { password: hashPassword(password) },
+      });
+    }
 
-    // Set HTTP-only session cookie
-    cookies().set("bitflow_session", user.id, {
-      httpOnly: true,
-      secure: process.env.HTTPS === "true",
-      sameSite: "lax",   // prevents CSRF attacks
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-      path: "/",
-    });
+    await createSession(user.id);
 
     return NextResponse.json({
       user: {
@@ -81,7 +88,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: any) {
-    console.error("Login error:", err);
+    await reportError("Login error:", err);
     const errorMessage = err?.message || "Internal Server Error";
     return NextResponse.json(
       { error: errorMessage },
