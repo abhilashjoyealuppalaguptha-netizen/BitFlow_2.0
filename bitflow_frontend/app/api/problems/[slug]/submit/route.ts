@@ -132,7 +132,7 @@ export async function POST(
   }
 
   // Started now, awaited below: runs alongside the DB writes.
-  const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade);
+  const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade, language === "verilog");
   const counterexample  = grade.accepted || writesTb || tooSlow ? Promise.resolve(null) : findCounterexample(question, gradedCode);
   // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
   const metrics = grade.accepted && !writesTb

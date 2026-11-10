@@ -26,6 +26,7 @@
     "check-schematic": "tsx scripts/schematic.check.ts",
     "check-share": "tsx scripts/share.check.ts",
     "check-engagement": "tsx scripts/engagement.check.ts",
+    "check-trace": "tsx scripts/trace.check.ts",
     "check-waveform-diff": "tsx scripts/waveform-diff.check.ts",
     "check-vhdl-starter": "tsx scripts/vhdl-starter.check.ts",
     "check-bitstream": "tsx scripts/bitstream.check.ts",

@@ -24,6 +24,7 @@
 
 "use client";
 
+import { REVEAL_LINE } from "@/lib/trace";
 import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
@@ -60,6 +61,8 @@ interface EditorProps {
   lint?: boolean;
   /** A project file's model (lib/verilog-monaco.ts uriOf): shared with cross-file definitions, references and rename. */
   path?: string;
+  /** Highlight and scroll to the line sent by a REVEAL_LINE event ("Trace the bug", lib/trace.ts). */
+  revealLines?: boolean;
 }
 
 const LINT_DELAY_MS = 1200;
@@ -301,6 +304,7 @@ export default function Editor({
   diagnostics,
   lint = false,
   path,
+  revealLines = false,
 }: EditorProps) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -370,6 +374,26 @@ export default function Editor({
     }, styleCache.has(`${language}\0${value}`) ? 0 : STYLE_DELAY_MS); // a known result shows at once
     return () => clearTimeout(t);
   }, [value, lint, language]);
+
+  // "Trace the bug": mark the line it points at until the next one (or until the editor goes).
+  useEffect(() => {
+    if (!revealLines) return;
+    let marked: MonacoEditorNS.IEditorDecorationsCollection | null = null;
+    const reveal = (e: Event) => {
+      const editor = editorRef.current, monaco = monacoRef.current, model = editor?.getModel();
+      if (!editor || !monaco || !model) return;
+      const line = Math.min(Math.max((e as CustomEvent<number>).detail, 1), model.getLineCount());
+      marked?.clear();
+      marked = editor.createDecorationsCollection([{
+        range: new monaco.Range(line, 1, line, 1),
+        options: { isWholeLine: true, className: "bf-trace-line", linesDecorationsClassName: "bf-trace-gutter" },
+      }]);
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column: model.getLineFirstNonWhitespaceColumn(line) || 1 });
+    };
+    window.addEventListener(REVEAL_LINE, reveal);
+    return () => { window.removeEventListener(REVEAL_LINE, reveal); marked?.clear(); };
+  }, [revealLines]);
 
   /** Store the editor instance so we can call methods on it if needed. */
   const handleMount: OnMount = useCallback((editor, monaco) => {

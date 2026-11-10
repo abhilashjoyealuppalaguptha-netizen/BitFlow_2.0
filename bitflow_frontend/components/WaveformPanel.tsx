@@ -64,6 +64,7 @@ import { type DecoderKind, type DecoderSpec, type Frame, PRIMARY, ROLES, autoBit
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
+import { REVEAL_LINE, type TraceStep } from "@/lib/trace";
 import PixelSprite from "@/components/pixel/PixelSprite";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,6 +98,8 @@ interface WaveformPanelProps {
   viewKey?: string;
   /** "Where is this driven?" on a signal: the page opens the line that assigns it (Sandbox). */
   onReveal?: (name: string, scope: string) => void;
+  /** Put marker A at this time and scroll to it; a new object each time, so the same time can be sent twice. */
+  markAt?: { time: number };
 }
 
 interface SavedView {
@@ -677,7 +680,7 @@ const SignalLabel = React.memo(function SignalLabel({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, onReveal }: WaveformPanelProps) {
+export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, onReveal, markAt }: WaveformPanelProps) {
   const saved = viewKey ? savedViews.get(viewKey) : undefined;
 
   // ── Debugging: an opened VCD file, the previous run, the scope shown, buses expanded into bits ──
@@ -1067,6 +1070,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, 
     const el = scrollRef.current;
     if (el) el.scrollLeft = Math.max(0, t * pxPerUnitRef.current - el.clientWidth / 3);
   }, []);
+  useEffect(() => { if (markAt) goTo(markAt.time); }, [markAt, goTo]);
   const query = useMemo(() => (findText.trim() ? parseQuery(findText) : null), [findText]);
   const findSig = query && typeof query !== "string" ? signalFor(signals, query.name) : undefined;
   const findRanges = useMemo(() => (query && typeof query !== "string" && findSig ? matchRanges(findSig, query, maxTime) : []), [query, findSig, maxTime]);
@@ -1662,12 +1666,39 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, 
 }
 /** The learner's own signals on the first failing hidden test (from the submit response). */
 export function FailingWaveformView({ data }: {
-  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[] };
+  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[]; trace?: TraceStep[] };
 }) {
   const test = data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test";
   const diff = data.mismatches;
+  const [markAt, setMarkAt] = useState<{ time: number } | undefined>();
+  const [active, setActive] = useState<number | null>(null);
+  const goStep = (i: number, step: TraceStep) => {
+    setActive(i);
+    setMarkAt({ time: step.time });
+    if (step.line) window.dispatchEvent(new CustomEvent(REVEAL_LINE, { detail: step.line }));
+  };
   return (
     <div className="space-y-1">
+      {data.trace && data.trace.length > 0 && (
+        <div className="rounded border border-danger/40 bg-danger/5 p-2 space-y-1.5" aria-label="Trace the bug">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-danger">Trace the bug</span>
+            <span className="font-mono text-[9px] text-dim">Click a step: the line lights up in your code and the waveform jumps there.</span>
+          </div>
+          <ol className="space-y-1">
+            {data.trace.map((step, i) => (
+              <li key={i}>
+                <button type="button" onClick={() => goStep(i, step)}
+                        className={`w-full text-left rounded px-2 py-1.5 font-mono text-[11px] border transition-colors ${active === i ? "border-danger/60 bg-danger/10" : "border-transparent hover:border-rim hover:bg-void/40"}`}>
+                  <span className="text-danger font-bold mr-1.5">{i + 1}.</span>
+                  <span className="text-pale">{step.title}</span>
+                  {step.detail && <span className="block whitespace-pre-wrap text-ghost mt-0.5 pl-4">{step.detail}</span>}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <p className="font-mono text-[9px] text-dim">
         {diff
           ? <>Your design on {test}. Each output is shown twice: &ldquo;yours&rdquo; and &ldquo;expected&rdquo; (a correct design on the same test).{" "}
@@ -1677,7 +1708,7 @@ export function FailingWaveformView({ data }: {
           : <>Your design on {test}: only signals inside your module are shown.</>}
       </p>
       <div className={`h-64 border rounded overflow-hidden ${diff?.length ? "border-danger/40" : "border-rim/60"}`}>
-        <WaveformPanel parsedVcd={data.waveform} highlights={diff} />
+        <WaveformPanel parsedVcd={data.waveform} highlights={diff} markAt={markAt} />
       </div>
     </div>
   );

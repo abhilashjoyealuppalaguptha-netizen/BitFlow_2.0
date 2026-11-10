@@ -273,3 +273,7 @@
     .apex-recede { transform-origin: 0 0; animation: apex-recede linear both; animation-timeline: scroll(root); animation-range: 0 60vh; }
   }
 }
+
+/* "Trace the bug" (lib/trace.ts): the line it points at in the editor */
+.bf-trace-line { background: rgba(255, 92, 92, 0.13); }
+.bf-trace-gutter { border-left: 3px solid #ff5c5c; margin-left: 3px; }
