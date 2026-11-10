@@ -53,6 +53,7 @@ model User {
   announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
   lessonProgress   LessonProgress[]
   xpEvents         XpEvent[]
+  liveSnapshots    LiveSnapshot[]
   mockInterviews   MockInterview[]
 
   @@index([guardianTokenHash])
@@ -284,6 +285,37 @@ model Classroom {
   owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   members     ClassMember[]
   assignments Assignment[]
+  liveLab     LiveLab?
+}
+
+/// A running live lab (lib/live-lab.ts): while it exists, students who joined send their Sandbox code and last
+/// run, and the class's teachers see them. Ending the lab deletes the row and, with it, every snapshot.
+model LiveLab {
+  id        String         @id @default(uuid())
+  classId   String         @unique
+  startedBy String
+  startedAt DateTime       @default(now())
+
+  classroom Classroom      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  snapshots LiveSnapshot[]
+}
+
+/// One joined student's latest Sandbox state in a live lab, and the teacher's note to them.
+model LiveSnapshot {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  files     String   @default("[]")  // JSON [{name, content}]: design, testbench, extra files
+  run       String?                  // JSON {status, passed, total, firstError}: the last run (lib/live-lab.ts runSummary)
+  note      String?                  // from the teacher
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lab       LiveLab  @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, userId])
+  @@index([userId])
 }
 
 model ClassMember {

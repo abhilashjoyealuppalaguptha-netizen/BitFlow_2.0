@@ -66,6 +66,7 @@
 
 "use client";
 
+import LiveLabBanner from "@/components/LiveLabBanner";
 import {
   useRef,
   useState,
@@ -779,6 +780,7 @@ function SandboxContent() {
         onExportImage={result ? handleExportImage : undefined}
         isExporting={isExporting}
       />
+      <LiveLabBanner designCode={designCode} testbenchCode={testbenchCode} files={extraFiles} result={result} />
 
       {/*
        * ── Action bar — sits between toolbar and editors ────────────────────
