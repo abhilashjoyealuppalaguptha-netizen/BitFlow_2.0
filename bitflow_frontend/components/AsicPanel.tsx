@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 import TinyTapeoutSection from "@/components/TinyTapeoutSection";
+import ChipXray from "@/components/ChipXray";
+import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
 import { pathCells, slowestCell } from "@/lib/asic-path";
 
 interface Stage { pin: string; cell: string; edge: "rise" | "fall"; delay: number; arrival: number; net: string | null }
@@ -40,6 +42,8 @@ interface AsicResult {
   };
   gls?: { error: string } | { rtl: SimRun; gates: SimRun; sameOutput: boolean } | null;
   netlist?: string | null;
+  /** Chip X-ray: the mapped gates (Yosys JSON), when small enough to draw. */
+  gates?: YosysNetlist | null;
 }
 
 interface Props {
@@ -48,6 +52,10 @@ interface Props {
   designCode:     string;
   testbenchCode?: string;
   language?:      "verilog" | "vhdl";
+  /** Chip X-ray cross-probing, as in the synthesis panel: the editor's line, open a line, name a line. */
+  cursor?:        { file: string; line: number } | null;
+  onOpenSource?:  (loc: SrcLoc) => void;
+  describe?:      (loc: SrcLoc) => string;
 }
 
 function watts(w: number): string {
@@ -195,7 +203,7 @@ function TargetCompare({ asic, ice40 }: { asic: AsicResult; ice40: Ice40Result |
   );
 }
 
-export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog" }: Props) {
+export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog", cursor, onOpenSource, describe }: Props) {
   const [periodNs, setPeriodNs] = useState(10);
   const [clock, setClock]       = useState("");
   const [useTb, setUseTb]       = useState(true);
@@ -322,6 +330,11 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                     The amber cell costs the most time. Shorten the logic between these registers, or add a pipeline register in the middle.
                   </p>
                 </section>
+              )}
+
+              {result.gates && result.top && (
+                <ChipXray gates={result.gates} top={result.top} code={language === "verilog" ? designCode : null}
+                          stages={t.setup?.stages ?? []} cursor={cursor} onOpenSource={onOpenSource} describe={describe} />
               )}
 
               <TargetCompare asic={result} ice40={ice40} />

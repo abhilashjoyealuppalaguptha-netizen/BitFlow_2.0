@@ -220,6 +220,14 @@ def test_counter_area_timing_power(client):
     assert 100 < t["fmaxMhz"] < 3000
     assert r["power"]["total"] > 0 and r["power"]["activitySource"] == "default"
     assert "sky130_fd_sc_hd__dfxtp_1" in r["netlist"] or "sky130_fd_sc_hd__dfrtp_1" in r["netlist"]
+    # Chip X-ray: the gates as Yosys JSON, named like the netlist and the timing path's pins
+    gates = r["gates"]["modules"]["counter4"]
+    names = set(gates["cells"])
+    assert len(names) == r["cells"]
+    path_cells = {s["pin"].split("/")[0] for s in t["setup"]["stages"] if "/" in s["pin"]}
+    assert path_cells and path_cells <= names, (path_cells, sorted(names)[:10])
+    srcs = [n["attributes"].get("src", "") for n in gates["netnames"].values()] + [c["attributes"].get("src", "") for c in gates["cells"].values()]
+    assert any("design.v:" in s for s in srcs), "some source locations survive mapping"
 
 
 @needs_asic

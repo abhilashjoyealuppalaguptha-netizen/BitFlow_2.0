@@ -44,7 +44,7 @@ function edgePaths(edges: ElkExtendedEdge[], width: (e: ElkExtendedEdge) => numb
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Bit = number | string;   // net number, or a constant "0" / "1" / "x" / "z"
-interface YosysModule {
+export interface YosysModule {
   attributes?: Record<string, unknown>;
   ports?:      Record<string, { direction: string; bits: Bit[] }>;
   cells?:      Record<string, { type: string; attributes?: Record<string, unknown>; port_directions?: Record<string, string>; connections: Record<string, Bit[]> }>;

@@ -435,18 +435,18 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [asicOpen, setAsicOpen] = useState(false);
   // Cross-probing with the schematic: Yosys sees one combined design.v; map its lines to and from the files.
   const synthProject = useMemo(() => combineDesign(designCode, extraFiles), [designCode, extraFiles]);
   const [synthCursor, setSynthCursor] = useState<{ file: string; line: number } | null>(null);
   useEffect(() => {
-    if (!synthOpen) return;
+    if (!synthOpen && !asicOpen) return;
     const name = activeFile;
     const line = cursorLine(name);
     const at = line === null ? null : synthProject.place(name, line);
     setSynthCursor(at === null ? null : { file: "design.v", line: at });
-  }, [synthOpen]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [synthOpen, asicOpen]);  // eslint-disable-line react-hooks/exhaustive-deps
   const [coverageOpen, setCoverageOpen] = useState(false);
-  const [asicOpen, setAsicOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   // Live check: with the in-browser engine, the whole project (every design file + the testbench) is compiled a
@@ -1034,7 +1034,14 @@ function SandboxContent() {
         } : undefined} />
       <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
       <AsicPanel isOpen={asicOpen} onClose={() => setAsicOpen(false)} designCode={projectDesign} language={designLanguage}
-                 testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
+                 testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}
+                 cursor={designLanguage === "verilog" ? synthCursor : null}
+                 describe={(loc) => { const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line }; return `${at.file}:${at.line}`; }}
+                 onOpenSource={designLanguage === "verilog" ? (loc) => {
+                   const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line };
+                   setAsicOpen(false);
+                   setTimeout(() => revealInProject(at.file, at.line), 0);
+                 } : undefined} />
       {reportOpen && (
         <LabReport onClose={() => setReportOpen(false)} result={result} parsedVcd={parsedVcd} viewKey="/sandbox" synthDesign={projectDesign}
                    files={[{ name: DESIGN_FILES[designLanguage][0], content: designCode }, { name: TESTBENCH_FILES[testbenchLanguage][0], content: testbenchCode }, ...extraFiles]} />

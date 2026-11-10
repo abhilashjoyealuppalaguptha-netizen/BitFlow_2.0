@@ -64,6 +64,16 @@ export function cycleAt(vcd: ParsedVcd, t: number): number | null {
   return n;
 }
 
+const UNITS = ["fs", "ps", "ns", "us", "ms", "s"];
+/** A VCD time in the largest unit it's a whole number of: 15000 at "1ps" → "15 ns". Plain "t=…" without a timescale. */
+export function timeText(t: number, timescale: string): string {
+  const m = /^\s*(\d+)\s*(fs|ps|ns|us|ms|s)\s*$/.exec(timescale);
+  if (!m) return `t=${t}`;
+  let v = t * Number(m[1]), u = UNITS.indexOf(m[2]);
+  while (u < UNITS.length - 1 && v !== 0 && v % 1000 === 0) { v /= 1000; u++; }
+  return `${v} ${UNITS[u]}`;
+}
+
 /** Binary VCD value as the learner would read it: decimal for buses (x stays x), 0/1 for bits. */
 export function show(v: string | undefined): string {
   if (v === undefined) return "?";
@@ -132,8 +142,8 @@ export function traceBug(yours: ParsedVcd, expected: ParsedVcd, outputs: string[
 
   const files: SourceFile[] = code ? [{ name: "design.v", text: code }] : [];
   const cycleText = (t: number) => {
-    const c = cycleAt(yours, t);
-    return c === null ? `at t=${t}` : `at t=${t} (clock cycle ${c})`;
+    const c = cycleAt(yours, t), at = timeText(t, yours.timescale);
+    return c === null ? `at ${at}` : `at ${at} (clock cycle ${c})`;
   };
   const describe = (sig: Pair, title: string): TraceStep => {
     const name = leaf(sig.name), scope = sig.name.includes(".") ? sig.name.slice(0, sig.name.lastIndexOf(".")) : "";

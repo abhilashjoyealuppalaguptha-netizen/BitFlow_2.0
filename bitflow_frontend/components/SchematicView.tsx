@@ -17,11 +17,14 @@ interface Props {
   onOpenSource?: (loc: SrcLoc) => void;
   /** How to name a location for people (multi-file projects map the combined design.v back to their files). */
   describe?: (loc: SrcLoc) => string;
+  /** Cell names to outline in red (the ASIC panel's critical path). */
+  emphasis?: string[];
 }
 
-const C = { line: "#7c8aa5", lit: "#00e87a", text: "#d6dbe4", dim: "#8a93a6", box: "#16181f", ff: "#00e87a", port: "#5eb3ff", cursor: "#ffb547" };
+const C = { line: "#7c8aa5", lit: "#00e87a", text: "#d6dbe4", dim: "#8a93a6", box: "#16181f", ff: "#00e87a", port: "#5eb3ff", cursor: "#ffb547", hot: "#ff5c5c" };
 
-export default function SchematicView({ netlist, cursor, onOpenSource, describe = (l) => `${l.file}:${l.line}` }: Props) {
+export default function SchematicView({ netlist, cursor, onOpenSource, describe = (l) => `${l.file}:${l.line}`, emphasis }: Props) {
+  const hot = useMemo(() => new Set(emphasis ?? []), [emphasis]);
   const { top } = useMemo(() => schematicModules(netlist), [netlist]);
   const [path, setPath] = useState<string[]>(top ? [top] : []);
   const module = path[path.length - 1];
@@ -125,7 +128,7 @@ export default function SchematicView({ netlist, cursor, onOpenSource, describe 
                   </g>
                 ));
               })}
-              {L.nodes.map((n) => <NodeShape key={n.id} n={n} lit={lit.has(n.id)} selected={selected === n.id}
+              {L.nodes.map((n) => <NodeShape key={n.id} n={n} lit={lit.has(n.id)} hot={!!n.name && hot.has(n.name)} selected={selected === n.id}
                                              onSelect={() => { if (!drag.current?.moved) setSelected(n.id); }} onEnter={() => enter(n)} />)}
             </g>
           </svg>
@@ -151,9 +154,9 @@ export default function SchematicView({ netlist, cursor, onOpenSource, describe 
   );
 }
 
-function NodeShape({ n, lit, selected, onSelect, onEnter }: { n: SchNode; lit: boolean; selected: boolean; onSelect: () => void; onEnter: () => void }) {
+function NodeShape({ n, lit, hot, selected, onSelect, onEnter }: { n: SchNode; lit: boolean; hot?: boolean; selected: boolean; onSelect: () => void; onEnter: () => void }) {
   const { x, y, w, h } = n;
-  const ring = selected ? C.lit : lit ? C.cursor : null;
+  const ring = selected ? C.lit : lit ? C.cursor : hot ? C.hot : null;
   const common = {
     "data-node": n.id,
     onClick: (e: React.MouseEvent) => { e.stopPropagation(); onSelect(); },

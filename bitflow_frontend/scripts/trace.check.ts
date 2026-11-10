@@ -1,7 +1,7 @@
 /** scripts/trace.check.ts — "Trace the bug" (lib/trace.ts) on planted bugs: the right output, time, root signal and line. */
 import assert from "node:assert/strict";
 import type { ParsedVcd, VcdSignal } from "../lib/vcd-parser";
-import { cycleAt, firstDifference, rhsSignals, show, traceBug } from "../lib/trace";
+import { cycleAt, firstDifference, rhsSignals, show, timeText, traceBug } from "../lib/trace";
 
 const sig = (name: string, width: number, changes: [number, string][]): VcdSignal =>
   ({ id: name, name, width, type: "wire", changes: changes.map(([time, value]) => ({ time, value })) });
@@ -15,6 +15,11 @@ assert.equal(firstDifference(sig("y", 2, [[0, "01"]]), sig("y", 2, [[0, "x1"]]))
 assert.equal(cycleAt(vcd(clk), 15), 2);
 assert.equal(cycleAt(vcd(sig("a", 1, [])), 15), null, "no clock");
 assert.equal(show("0101"), "5");
+assert.equal(timeText(15000, "1ps"), "15 ns");
+assert.equal(timeText(1500, "1ps"), "1500 ps");
+assert.equal(timeText(25, "1ns"), "25 ns");
+assert.equal(timeText(0, "1ps"), "0 ps");
+assert.equal(timeText(7, "?"), "t=7");
 assert.equal(show("01x1"), "01x1");
 assert.deepEqual(rhsSignals("assign y = a & b;\n", 1), ["a", "b"]);
 assert.deepEqual(rhsSignals("  count <= count + 4'd1;", 1), ["count"]);
@@ -26,7 +31,7 @@ assert.deepEqual(rhsSignals("assign y = sel ? a : 8'hFF; // b", 1), ["sel", "a"]
   const a = sig("a", 1, [[0, "0"], [10, "1"], [20, "1"]]), b = sig("b", 1, [[0, "0"], [20, "1"]]);
   const steps = traceBug(vcd(a, b, sig("y", 1, [[0, "0"], [10, "1"]])), vcd(a, b, sig("y", 1, [[0, "0"], [20, "1"]])), ["y"], code);
   assert.equal(steps.length, 2);
-  assert.match(steps[0].title, /^y first goes wrong at t=10: yours is 1, expected 0/);
+  assert.match(steps[0].title, /^y first goes wrong at 10 ns: yours is 1, expected 0/);
   assert.equal(steps[0].line, 2);
   assert.match(steps[0].detail!, /a = 1, b = 0/);
   assert.match(steps[1].title, /No signal inside your design/);
@@ -48,9 +53,9 @@ assert.deepEqual(rhsSignals("assign y = sel ? a : 8'hFF; // b", 1), ["sel", "a"]
   const yours = vcd(clk, rst, sig("count", 4, [[5, "0000"], [15, "0010"], [25, "0100"]]), sig("done", 1, [[0, "0"], [25, "1"]]));
   const want  = vcd(clk, rst, sig("count", 4, [[5, "0000"], [15, "0001"], [25, "0010"], [35, "0011"]]), sig("done", 1, [[0, "0"]]));
   const steps = traceBug(yours, want, ["done"], code);
-  assert.match(steps[0].title, /^done first goes wrong at t=25 \(clock cycle 3\)/);
+  assert.match(steps[0].title, /^done first goes wrong at 25 ns \(clock cycle 3\)/);
   assert.equal(steps[0].line, lineOf(code, "assign done"));
-  assert.match(steps[1].title, /Earlier, count already differs .* at t=15 \(clock cycle 2\)/);
+  assert.match(steps[1].title, /Earlier, count already differs .* at 15 ns \(clock cycle 2\)/);
   assert.equal(steps[1].line, lineOf(code, "count + 4'd2"), "root cause is the increment");
   assert.match(steps[1].detail!, /Just before that clock edge: count = 0\./, "a clocked line shows the values it sampled");
 }
@@ -60,7 +65,7 @@ assert.deepEqual(rhsSignals("assign y = sel ? a : 8'hFF; // b", 1), ["sel", "a"]
   const code = "module r(input clk, input rst, output reg q);\n  always @(posedge clk)\n    if (rst) q <= 1'b1;\n    else q <= ~q;\nendmodule\n";
   const rst = sig("rst", 1, [[0, "1"], [12, "0"]]);
   const steps = traceBug(vcd(clk, rst, sig("q", 1, [[5, "1"], [15, "0"]])), vcd(clk, rst, sig("q", 1, [[5, "0"], [15, "1"]])), ["q"], code);
-  assert.match(steps[0].title, /^q first goes wrong at t=5 \(clock cycle 1\): yours is 1, expected 0/);
+  assert.match(steps[0].title, /^q first goes wrong at 5 ns \(clock cycle 1\): yours is 1, expected 0/);
   assert.equal(steps[0].line, 3, "in reset: the reset branch");
   const later = traceBug(vcd(clk, rst, sig("q", 1, [[5, "0"], [15, "0"]])), vcd(clk, rst, sig("q", 1, [[5, "0"], [15, "1"]])), ["q"], code);
   assert.equal(later[0].line, 4, "out of reset: the toggle");
@@ -71,7 +76,7 @@ assert.deepEqual(rhsSignals("assign y = sel ? a : 8'hFF; // b", 1), ["sel", "a"]
   const code = "module x(input sel, input [3:0] a, input [3:0] b, output [3:0] y);\n  assign y = sel ? b : a;\nendmodule\n";
   const ins = [sig("sel", 1, [[0, "0"], [30, "1"]]), sig("a", 4, [[0, "0011"]]), sig("b", 4, [[0, "1001"]])];
   const steps = traceBug(vcd(...ins, sig("y", 4, [[0, "0011"], [30, "1001"]])), vcd(...ins, sig("y", 4, [[0, "1001"], [30, "0011"]])), ["y"], code);
-  assert.match(steps[0].title, /^y first goes wrong at t=0: yours is 3, expected 9/);
+  assert.match(steps[0].title, /^y first goes wrong at 0 ns: yours is 3, expected 9/);
   assert.match(steps[0].detail!, /At that moment: sel = 0, b = 9, a = 3\./, "in the order the line reads them");
 }
 
