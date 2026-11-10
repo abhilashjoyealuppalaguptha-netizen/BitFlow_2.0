@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
+import TinyTapeoutSection from "@/components/TinyTapeoutSection";
 import { pathCells, slowestCell } from "@/lib/asic-path";
 
 interface Stage { pin: string; cell: string; edge: "rise" | "fall"; delay: number; arrival: number; net: string | null }
@@ -388,6 +389,8 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                   )}
                 </div>
               </section>
+              <TinyTapeoutSection design={designCode} testbench={testbenchCode} top={result.top} areaUm2={result.areaUm2}
+                                  fmaxMhz={t.fmaxMhz} language={language} />
             </>
           )}
         </div>
