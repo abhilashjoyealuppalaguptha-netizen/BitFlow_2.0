@@ -20,7 +20,8 @@ const readable = (q: { archived: boolean; unlockAfter: string | null } | null) =
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const q = await prisma.question.findUnique({ where: { slug: params.slug }, select: { title: true, difficulty: true, archived: true, unlockAfter: true } });
   if (!q) return { ...GATED, title: "Problem not found" };
-  const description = `${q.title}: a ${q.difficulty.toLowerCase()} Verilog problem on BitFlow. Write the module, simulate it and get graded against hidden tests.`;
+  const level = q.difficulty.toLowerCase();
+  const description = `${q.title}: ${/^[aeiou]/.test(level) ? "an" : "a"} ${level} Verilog problem on BitFlow. Write the module, simulate it and get graded against hidden tests.`;
   return readable(q) ? pageMeta(`/problems/${params.slug}`, q.title, description) : { ...GATED, title: q.title, description };
 }
 
