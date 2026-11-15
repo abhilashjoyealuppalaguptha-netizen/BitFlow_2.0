@@ -13,6 +13,7 @@ import { rich } from "@/components/lab/rich";
 interface Props { params: { slug: string } }
 
 export const generateStaticParams = () => LESSONS.map((l) => ({ slug: l.slug }));
+export const dynamicParams = false;   // unknown slugs get a real 404; app/loading.tsx would otherwise stream them with a 200
 
 export function generateMetadata({ params }: Props): Metadata {
   const l = lessonBySlug(params.slug);

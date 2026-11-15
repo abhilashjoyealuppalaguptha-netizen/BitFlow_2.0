@@ -14,6 +14,7 @@ import { OPERATOR, SITE_NAME, SITE_URL, jsonLd, pageMeta } from "@/lib/site";
 interface Props { params: { slug: string } }
 
 export const generateStaticParams = () => articleSlugs().map((slug) => ({ slug }));
+export const dynamicParams = false;   // unknown slugs get a real 404; app/loading.tsx would otherwise stream them with a 200
 
 export function generateMetadata({ params }: Props): Metadata {
   const a = articleBySlug(params.slug);
