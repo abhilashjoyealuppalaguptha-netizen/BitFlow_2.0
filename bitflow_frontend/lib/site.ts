@@ -21,9 +21,45 @@ export const SITE_URL = (
 ).replace(/\/+$/, "");
 export const CONTACT_EMAIL = process.env.CONTACT_EMAIL || null;
 
-/** A public page's title, description and canonical URL (relative: the root layout's metadataBase makes it absolute). */
-export const pageMeta = (path: string, title: string, description: string) =>
-  ({ title, description, alternates: { canonical: path } });
+/**
+ * A public page's title, description and canonical URL (relative: the root layout's metadataBase makes it absolute),
+ * plus its own social preview text. Without the openGraph/twitter part a shared link would show the home page's
+ * title and "url: /" inherited from the root layout.
+ */
+export const pageMeta = (path: string, title: string, description: string) => {
+  const full = `${title} · ${SITE_NAME}`;   // openGraph and twitter titles don't go through the root title template
+  description = snippet(description);
+  return {
+    // Search results cut titles at about 60 characters: drop the " · BitFlow" suffix rather than the page's own words.
+    title: full.length > 60 ? { absolute: title } : title,
+    description, alternates: { canonical: path },
+    openGraph: { type: "website" as const, siteName: SITE_NAME, title: full, description, url: path },
+    twitter: { card: "summary_large_image" as const, title: full, description },
+  };
+};
+
+/** A meta description that fits a search snippet (~160 characters), cut at a word boundary. */
+export const snippet = (text: string, max = 160) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length <= max ? t : `${t.slice(0, t.lastIndexOf(" ", max - 1))}…`;
+};
+
+/** BreadcrumbList structured data from [name, path] pairs, home first. */
+export const breadcrumbs = (trail: [string, string][]) => ({
+  "@context": "https://schema.org", "@type": "BreadcrumbList",
+  itemListElement: [["Home", "/"] as [string, string], ...trail].map(([name, path], i) => ({
+    "@type": "ListItem", position: i + 1, name, item: `${SITE_URL}${path === "/" ? "" : path}`,
+  })),
+});
+
+/** Paths no crawler should fetch (app/robots.ts). */
+export const PRIVATE_PATHS = ["/api/", "/admin", "/dashboard", "/profile", "/classes", "/s/", "/reset-password", "/guardian/"];
+
+/** Crawlers that fetch pages for AI search and assistants (app/robots.ts names them so the policy is explicit). */
+export const AI_CRAWLERS = [
+  "GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User",
+  "PerplexityBot", "Perplexity-User", "Google-Extended", "Applebot-Extended", "CCBot",
+];
 
 /** Pages behind sign-in: crawlers only see the sign-in redirect, so keep them out of the index (links are still followed). */
 export const GATED = { robots: { index: false, follow: true } };

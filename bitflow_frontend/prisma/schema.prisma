@@ -394,8 +394,22 @@ model Project {
 
   owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   versions          ProjectVersion[]
+  pairInvite        PairInvite?
 
   @@index([ownerId, updatedAt])
+}
+
+// Pair mode (lib/pair.ts): a link that lets one other person edit this project with its owner, live. Only its hash is kept.
+model PairInvite {
+  id        String   @id @default(uuid())
+  projectId String   @unique   // one live link per project: a new one replaces it
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 // A saved state of a project; autosaves within a couple of minutes share one (lib/projects.ts).
@@ -633,4 +647,23 @@ model CommentReport {
   comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
   @@id([commentId, userId])
+}
+
+// One row per AI answer (lib/ai-budget.ts): what it cost, so spend can be seen and capped per day.
+// No prompt or code is stored here, only counts.
+model AiUsage {
+  id           String   @id @default(cuid())
+  userId       String
+  kind         String   // "sandbox" | "quick" | "tutor"
+  provider     String   // "gemini" | "agent" | ...
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  cachedTokens Int      @default(0)
+  paise        Int      // estimated cost, ₹1 = 100 paise
+  latencyMs    Int
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }

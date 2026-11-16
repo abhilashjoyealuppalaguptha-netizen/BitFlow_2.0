@@ -7,20 +7,17 @@
  */
 
 import Link from "next/link";
-import { OPERATOR, SITE_NAME } from "@/lib/site";
+import { OPERATOR, SITE_NAME, pageMeta } from "@/lib/site";
 import { CONSENT_VERSION, GRIEVANCE_DAYS } from "@/lib/privacy";
 
-export const metadata = {
-  title: "Privacy notice",
-  description: `What ${SITE_NAME} keeps about you, why, for how long, and your rights under India's DPDP Act.`,
-  alternates: { canonical: "/privacy" },
-};
+export const metadata = pageMeta("/privacy", "Privacy notice",
+  `What ${SITE_NAME} keeps about you, why, for how long, and your rights under India's DPDP Act.`);
 
 export default function PrivacyPage() {
   return (
     <>
       <h1>Privacy notice</h1>
-      <p className="text-ghost text-[12px]">Version {CONSENT_VERSION} · last updated 30 October 2026</p>
+      <p className="text-ghost text-[12px]">Version {CONSENT_VERSION} · last updated 10 November 2026</p>
 
       <p>
         {SITE_NAME} is run by {OPERATOR} (&quot;we&quot;), the Data Fiduciary for your personal data under India&apos;s Digital
@@ -59,8 +56,9 @@ export default function PrivacyPage() {
       <h2>Who processes it for us</h2>
       <p>
         We use these service providers (Data Processors), only to run {SITE_NAME}: <strong>Vercel</strong> (website hosting),
-        <strong> Render</strong> (the simulator that runs your code), <strong>Neon</strong> (the database), <strong>GitHub</strong>
-        (encrypted backups), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
+        <strong> Render</strong> (the simulator that runs your code, and while you pair on a project, keeps the two editors in
+        step: the code is held only in memory and is gone when you both leave), <strong>Neon</strong> (the database),
+        <strong> GitHub</strong> (encrypted backups), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
         Groq). Some of them process data outside India, which the DPDP Act allows except to countries the Government restricts.
       </p>
 
